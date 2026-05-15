@@ -1,0 +1,24 @@
+{
+  "name": "glazetopia-checkers",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Discord-launched checkers mini-game for Glazetopia",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "engine:test": "npm run test --workspace=@glazetopia/engine",
+    "engine:build": "npm run build --workspace=@glazetopia/engine"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
