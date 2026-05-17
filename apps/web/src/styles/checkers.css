@@ -1,0 +1,432 @@
+/*
+ * Glazetopia Checkers — global styles.
+ *
+ * Design tokens live as CSS custom properties so they can be themed later.
+ * No animation libs; transitions are CSS-only.
+ * Sized in vmin/clamp so it works on mobile and Discord iframe embeds.
+ */
+
+:root {
+  /* Board theme */
+  --board-light:        #f6e4c2;
+  --board-dark:         #5b3a1a;
+  --board-border:       #3a2406;
+  --board-shadow:       rgba(0, 0, 0, 0.35);
+
+  /* Highlights */
+  --hl-selected:        #ffd84a;
+  --hl-move:            #5fe46a;
+  --hl-capture:         #ff5a5a;
+
+  /* UI */
+  --ui-bg:              #1a1410;
+  --ui-panel:           #2a1f17;
+  --ui-text:            #f6e4c2;
+  --ui-text-dim:        #c4a47a;
+  --ui-accent:          #ffd84a;
+  --ui-danger:          #ff5a5a;
+  --ui-success:         #5fe46a;
+  --ui-border:          #5b3a1a;
+
+  /* Sizing */
+  --board-size:         min(92vmin, 560px);
+  --cell-size:          calc(var(--board-size) / 8);
+  --piece-pad:          calc(var(--cell-size) * 0.08);
+
+  /* Motion */
+  --move-duration:      220ms;
+  --fade-duration:      160ms;
+  --promote-duration:   320ms;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  min-height: 100vh;
+  min-height: 100svh;
+  overscroll-behavior: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* -------------------------------------------------------------------------
+ * Game layout
+ * ------------------------------------------------------------------------- */
+
+.game-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.5rem, 2vmin, 1rem);
+  padding: clamp(0.5rem, 2vmin, 1rem);
+  min-height: 100svh;
+}
+
+.game-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: var(--board-size);
+  max-width: 100%;
+}
+
+.game-title {
+  font-size: clamp(1rem, 3.5vmin, 1.4rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-align: center;
+  color: var(--ui-accent);
+}
+
+/* -------------------------------------------------------------------------
+ * Marks display
+ * ------------------------------------------------------------------------- */
+
+.marks {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  font-size: clamp(0.75rem, 2.4vmin, 0.95rem);
+}
+
+.marks-label {
+  color: var(--ui-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.85em;
+}
+
+.marks-dots {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.marks-dot {
+  width: 0.9em;
+  height: 0.9em;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid var(--ui-text-dim);
+  transition: background var(--fade-duration), border-color var(--fade-duration), transform var(--fade-duration);
+}
+
+.marks-dot.filled {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 6px var(--ui-accent);
+}
+
+.marks-dot.just-earned {
+  animation: pop 360ms ease-out;
+}
+
+@keyframes pop {
+  0%   { transform: scale(0.6); }
+  50%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+.marks-passed {
+  color: var(--ui-success);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* -------------------------------------------------------------------------
+ * Status bar
+ * ------------------------------------------------------------------------- */
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: var(--board-size);
+  max-width: 100%;
+  padding: 0.5rem 0.8rem;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.5rem;
+  font-size: clamp(0.8rem, 2.5vmin, 0.95rem);
+}
+
+.status-turn {
+  font-weight: 600;
+}
+
+.status-turn.player  { color: var(--ui-accent); }
+.status-turn.cpu     { color: var(--hl-capture); }
+
+.status-resign {
+  background: transparent;
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text-dim);
+  border-radius: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  transition: background var(--fade-duration), color var(--fade-duration);
+  font-size: 0.85em;
+}
+
+.status-resign:hover:not(:disabled) {
+  background: var(--ui-danger);
+  color: #fff;
+  border-color: var(--ui-danger);
+}
+
+.status-resign:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* -------------------------------------------------------------------------
+ * Board
+ * ------------------------------------------------------------------------- */
+
+.board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  width: var(--board-size);
+  height: var(--board-size);
+  border: 3px solid var(--board-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px var(--board-shadow);
+  overflow: hidden;
+  touch-action: manipulation; /* faster taps on mobile */
+}
+
+.square {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.square.light { background: var(--board-light); }
+.square.dark  { background: var(--board-dark); cursor: pointer; }
+
+.square.dark.selectable     { cursor: pointer; }
+.square.dark:not(.selectable) { cursor: default; }
+
+/* Selected piece outline */
+.square.selected::before {
+  content: "";
+  position: absolute;
+  inset: calc(var(--piece-pad) * -0.5);
+  border: 3px solid var(--hl-selected);
+  border-radius: 0.25rem;
+  pointer-events: none;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+/* Legal move marker — green dot in the middle */
+.square.legal-move::after {
+  content: "";
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: var(--hl-move);
+  opacity: 0.75;
+  pointer-events: none;
+  animation: fade-in var(--fade-duration) ease-out;
+}
+
+/* Legal capture marker — red ring at the destination */
+.square.legal-capture::after {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border: 3px dashed var(--hl-capture);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: fade-in var(--fade-duration) ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Recent-move trace — subtle persistent highlight on the last move's from/to */
+.square.last-from { background: color-mix(in srgb, var(--board-dark) 70%, var(--ui-accent) 30%); }
+.square.last-to   { background: color-mix(in srgb, var(--board-dark) 60%, var(--ui-accent) 40%); }
+
+/* -------------------------------------------------------------------------
+ * Piece
+ * ------------------------------------------------------------------------- */
+
+.piece {
+  width: 84%;
+  height: 84%;
+  display: block;
+  pointer-events: none; /* clicks go to the square */
+  transition:
+    transform var(--move-duration) cubic-bezier(0.4, 0, 0.2, 1),
+    opacity var(--fade-duration) ease-out;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+
+.piece.captured {
+  animation: capture var(--move-duration) ease-out forwards;
+}
+
+@keyframes capture {
+  0%   { transform: scale(1);   opacity: 1; }
+  60%  { transform: scale(1.15); opacity: 0.6; }
+  100% { transform: scale(0.4); opacity: 0; }
+}
+
+.piece.promoted {
+  animation: promote var(--promote-duration) ease-out;
+}
+
+@keyframes promote {
+  0%   { transform: scale(1)   rotate(0); }
+  40%  { transform: scale(1.25) rotate(-8deg); filter: drop-shadow(0 0 12px var(--ui-accent)); }
+  100% { transform: scale(1)   rotate(0); }
+}
+
+/* King ring (player only — already in the SVG but reinforced here) */
+.piece.player-king {
+  animation: king-pulse 2s ease-in-out infinite;
+}
+
+@keyframes king-pulse {
+  0%, 100% { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 4px rgba(255, 216, 74, 0.3)); }
+  50%      { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 10px rgba(255, 216, 74, 0.7)); }
+}
+
+.piece.cpu-king {
+  animation: cpu-king-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes cpu-king-pulse {
+  0%, 100% { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 4px rgba(86, 255, 102, 0.25)); }
+  50%      { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 12px rgba(86, 255, 102, 0.6)); }
+}
+
+/* -------------------------------------------------------------------------
+ * Result overlay
+ * ------------------------------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+  animation: fade-in 280ms ease-out;
+}
+
+.overlay-card {
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.75rem;
+  padding: clamp(1rem, 4vmin, 2rem);
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.overlay-title {
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.2rem, 4vmin, 1.6rem);
+  font-weight: 700;
+}
+
+.overlay-title.win  { color: var(--ui-success); }
+.overlay-title.lose { color: var(--ui-danger); }
+.overlay-title.draw { color: var(--ui-text-dim); }
+
+.overlay-body {
+  margin: 0.8rem 0;
+  font-size: clamp(0.85rem, 2.6vmin, 1rem);
+  color: var(--ui-text-dim);
+  line-height: 1.5;
+}
+
+.overlay-cta {
+  display: inline-block;
+  margin-top: 0.8rem;
+  padding: 0.6rem 1.2rem;
+  background: var(--ui-accent);
+  color: #1a1410;
+  border: none;
+  border-radius: 0.4rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: clamp(0.85rem, 2.6vmin, 1rem);
+}
+
+.overlay-cta:hover {
+  filter: brightness(1.1);
+}
+
+/* -------------------------------------------------------------------------
+ * Loading / error states
+ * ------------------------------------------------------------------------- */
+
+.state-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  min-height: 60svh;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.state-message.error  { color: var(--ui-danger); }
+.state-message.loading .spinner {
+  width: 36px;
+  height: 36px;
+  border: 4px solid var(--ui-border);
+  border-top-color: var(--ui-accent);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* -------------------------------------------------------------------------
+ * Reduced motion
+ * ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

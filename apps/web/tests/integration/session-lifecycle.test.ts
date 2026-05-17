@@ -41,7 +41,7 @@ describe('session lifecycle', () => {
     });
     expect(result.sessionId).toBeTruthy();
     expect(result.token).toBeTruthy();
-    expect(result.gameUrl).toContain('?t=');
+    expect(result.gameUrl).toContain(`/checkers/${result.sessionId}?t=`);
 
     const payload = await verifySessionToken(result.token);
     expect(payload.sid).toBe(result.sessionId);

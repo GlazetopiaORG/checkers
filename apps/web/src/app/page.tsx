@@ -1,13 +1,16 @@
-/**
- * Root page. Phase 3 will replace this with a landing page that explains
- * the game is launched from Discord.
- */
-
 export default function HomePage(): JSX.Element {
   return (
-    <main style={{ fontFamily: 'system-ui', padding: '2rem' }}>
-      <h1>Glazetopia Checkers</h1>
-      <p>This game is launched from Discord. Run <code>/checkers</code> in the server.</p>
+    <main className="game-shell">
+      <header className="game-header">
+        <h1 className="game-title">Glazetopia Checkers</h1>
+      </header>
+      <div className="state-message">
+        <p>This game is launched from Discord.</p>
+        <p style={{ color: 'var(--ui-text-dim)' }}>
+          Run <code>/checkers</code> in the Glazetopia server to start a duel
+          with the Unbaked.
+        </p>
+      </div>
     </main>
   );
 }

@@ -78,7 +78,7 @@ describe('initialBoard', () => {
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
         const cell = board[r]![c];
-        if (cell === null) continue;
+        if (cell === null || cell === undefined) continue;
         if (r <= 2) expect(cell.side).toBe('cpu');
         if (r === 3 || r === 4) throw new Error('middle rows must be empty');
         if (r >= 5) expect(cell.side).toBe('player');

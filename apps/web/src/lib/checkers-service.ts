@@ -152,7 +152,7 @@ export async function startSession(
     sessionId,
     token,
     expiresAt: expiresAt.toISOString(),
-    gameUrl: `${env.CHECKERS_GAME_URL}/checkers?t=${encodeURIComponent(token)}`,
+    gameUrl: `${env.CHECKERS_GAME_URL}/checkers/${sessionId}?t=${encodeURIComponent(token)}`,
   };
 }
 
@@ -605,3 +605,114 @@ async function countUserMarks(userId: string): Promise<number> {
 export function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
 }
+
+// -----------------------------------------------------------------------------
+// Phase 4: bot-facing helpers
+// -----------------------------------------------------------------------------
+
+export interface UserMarksResult {
+  discordId: string;
+  marks: number;
+  required: number;
+  levelPassed: boolean;
+}
+
+/**
+ * Read-only: return the current non-revoked mark count for a Discord user.
+ * Used by the bot's /checkers-status command.
+ *
+ * If the user has never played, returns 0. Never creates a user row — the
+ * /checkers command is what creates users (via startSession).
+ */
+export async function getUserMarks(discordId: string): Promise<UserMarksResult> {
+  const env = getEnv();
+  const supabase = getSupabase();
+
+  const { data: user, error: userErr } = await supabase
+    .from('users')
+    .select('id')
+    .eq('discord_id', discordId)
+    .maybeSingle();
+
+  if (userErr) {
+    throw new ApiError(
+      'INTERNAL_ERROR',
+      `Failed to look up user: ${userErr.message}`,
+    );
+  }
+
+  if (!user) {
+    // User has never played. Not an error — return zero marks.
+    return {
+      discordId,
+      marks: 0,
+      required: env.CHECKERS_MARKS_REQUIRED,
+      levelPassed: false,
+    };
+  }
+
+  const userId = (user as { id: string }).id;
+  const marks = await countUserMarks(userId);
+
+  return {
+    discordId,
+    marks,
+    required: env.CHECKERS_MARKS_REQUIRED,
+    levelPassed: marks >= env.CHECKERS_MARKS_REQUIRED,
+  };
+}
+
+export interface CancelSessionResult {
+  cancelled: number;
+}
+
+/**
+ * Cancels any active or pending sessions belonging to a Discord user.
+ * Idempotent: returns the number of rows cancelled (0 if none).
+ *
+ * Used by the bot to recover from "I have a stuck session" cases. Cancelled
+ * sessions are marked 'abandoned' so audit history is preserved.
+ */
+export async function cancelActiveSession(
+  discordId: string,
+): Promise<CancelSessionResult> {
+  const supabase = getSupabase();
+
+  const { data: user, error: userErr } = await supabase
+    .from('users')
+    .select('id')
+    .eq('discord_id', discordId)
+    .maybeSingle();
+
+  if (userErr) {
+    throw new ApiError(
+      'INTERNAL_ERROR',
+      `Failed to look up user: ${userErr.message}`,
+    );
+  }
+  if (!user) {
+    return { cancelled: 0 };
+  }
+
+  const userId = (user as { id: string }).id;
+  const { data, error } = await supabase
+    .from('checkers_sessions')
+    .update({
+      status: 'abandoned',
+      ended_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId)
+    .in('status', ['pending', 'active'])
+    .select('id');
+
+  if (error) {
+    throw new ApiError(
+      'INTERNAL_ERROR',
+      `Failed to cancel sessions: ${error.message}`,
+    );
+  }
+
+  const rows = (data as unknown[] | null) ?? [];
+  return { cancelled: rows.length };
+}
+

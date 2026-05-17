@@ -91,8 +91,13 @@ curl -X POST http://localhost:3000/api/checkers/session/$SESSION_ID/move \
 ```
 src/
 ├── app/
-│   ├── layout.tsx                ← Root layout (placeholder, replaced in Phase 3)
-│   ├── page.tsx                  ← Root page (placeholder)
+│   ├── layout.tsx                ← Root layout with global styles + viewport
+│   ├── page.tsx                  ← Landing page (visit-from-Discord notice)
+│   ├── checkers/
+│   │   └── [sessionId]/
+│   │       ├── page.tsx          ← Game page (server component, hands off to client)
+│   │       ├── _components/      ← UI: Board, Piece, MarksDisplay, StatusBar, Overlay, GameClient
+│   │       └── _lib/             ← Browser-only utilities: api-client, coordinate helpers
 │   └── api/
 │       ├── health/route.ts
 │       └── checkers/session/
@@ -101,15 +106,30 @@ src/
 │           ├── [id]/legal-moves/route.ts GET
 │           ├── [id]/move/route.ts        POST
 │           └── [id]/resign/route.ts      POST
-└── lib/
-    ├── env.ts                    zod-validated env loader
-    ├── supabase.ts               service-role Supabase client
-    ├── jwt.ts                    JWT sign/verify + token hashing
-    ├── auth.ts                   bot HMAC + session JWT middleware
-    ├── errors.ts                 typed ApiError + handler
-    ├── serialize.ts              GameState <-> DB JSON
-    └── checkers-service.ts       all game logic — the heart of Phase 2
+├── lib/                          ← Server-side libs (Phase 2)
+│   ├── env.ts                    zod-validated env loader
+│   ├── supabase.ts               service-role Supabase client
+│   ├── jwt.ts                    JWT sign/verify + token hashing
+│   ├── auth.ts                   bot HMAC + session JWT middleware
+│   ├── errors.ts                 typed ApiError + handler
+│   ├── serialize.ts              GameState <-> DB JSON
+│   └── checkers-service.ts       all game logic — the heart of Phase 2
+├── styles/
+│   └── checkers.css              ← Global stylesheet — design tokens + animations
+└── global.d.ts                   ← CSS/SVG module declarations
 ```
+
+## Phase 3: the UI
+
+The game UI lives at `/checkers/[sessionId]?t=<jwt>`. The session id comes from the URL path (set by the bot); the JWT comes from `?t=`.
+
+**Server-authoritative.** The browser is a renderer. It calls four API endpoints — `GET /:id`, `GET /:id/legal-moves`, `POST /:id/move`, `POST /:id/resign` — and renders whatever they return. The engine is not bundled into the client.
+
+**Asset modularity.** All piece art lives in `public/pieces/` and is mapped to game state by `_components/PieceSkin.tsx` — the only file that knows what pieces look like. To swap art: drop new files in `public/pieces/`, or edit `PieceSkin.tsx` if filenames differ.
+
+**Discord embed-friendly.** The `/checkers/*` route ships `Content-Security-Policy: frame-ancestors *` headers (set in `next.config.mjs`). No X-Frame-Options. Mobile-first sizing via `vmin`/`clamp()`/`svh`.
+
+**Animations are pure CSS.** No animation library. Transitions are scoped to piece sliding, capture fade, and king promotion flash. Respects `prefers-reduced-motion`.
 
 ## Anti-cheat in Phase 2
 

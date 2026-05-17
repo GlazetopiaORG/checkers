@@ -94,9 +94,26 @@ const move = cpuMove(state, harder);
 ```bash
 npm test            # Run all unit tests (vitest)
 npm run test:watch  # Watch mode
-npm run typecheck   # Type-only check
-npm run build       # Compile to dist/
+npm run typecheck   # Type-check src + tests (uses tsconfig.test.json)
+npm run build       # Compile src → dist (uses tsconfig.json)
+npm run clean       # Remove dist/
 ```
+
+## TypeScript config layout
+
+This package uses two tsconfigs:
+
+- **`tsconfig.json`** — build config. Compiles `src` only to `dist`, with `composite: true` and `noEmit` off. This is what `npm run build` and `tsc -b` use. Tests are explicitly excluded so they don't leak into the published artifact.
+- **`tsconfig.test.json`** — typecheck config. Includes both `src` and `tests`, `noEmit: true`, and pulls in `vitest/globals` types. This is what `npm run typecheck` uses.
+
+## Package exports
+
+`package.json` uses source-first exports:
+
+- **In the workspace** (Next via `transpilePackages`, Vitest natively): consumers import from `./src/index.ts` directly. No build step required before running `web:dev` or `web:test`.
+- **In a published artifact** (if you ever publish): the `publishConfig` field flips exports to `./dist/index.js` and `./dist/index.d.ts`.
+
+This means `npm run engine:build` is optional during development — it's only needed if a downstream tool can't transpile TS.
 
 Two ad-hoc verification scripts live in `../../scripts/`:
 

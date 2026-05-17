@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="D'Lish">
+  <!-- D'Lish: yellow donut hero. Placeholder art — swap freely.
+       The whole piece is one SVG so a future redesign just replaces this file. -->
+  <defs>
+    <radialGradient id="dlish-body" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#ffe97a"/>
+      <stop offset="70%" stop-color="#f5c637"/>
+      <stop offset="100%" stop-color="#c98a17"/>
+    </radialGradient>
+  </defs>
+  <!-- Donut body -->
+  <circle cx="50" cy="50" r="36" fill="url(#dlish-body)" stroke="#7a4d0a" stroke-width="3"/>
+  <!-- Donut hole -->
+  <circle cx="50" cy="50" r="11" fill="#3a2406"/>
+  <!-- Sprinkles -->
+  <rect x="28" y="30" width="6" height="2.5" rx="1" fill="#ff5577" transform="rotate(-20 31 31)"/>
+  <rect x="62" y="32" width="6" height="2.5" rx="1" fill="#3aaaff" transform="rotate(35 65 33)"/>
+  <rect x="40" y="72" width="6" height="2.5" rx="1" fill="#56cc6a" transform="rotate(10 43 73)"/>
+  <rect x="66" y="62" width="6" height="2.5" rx="1" fill="#ff8a3a" transform="rotate(-30 69 63)"/>
+  <!-- Eyes peeking through -->
+  <circle cx="44" cy="48" r="2" fill="#1a1a1a"/>
+  <circle cx="56" cy="48" r="2" fill="#1a1a1a"/>
+</svg>

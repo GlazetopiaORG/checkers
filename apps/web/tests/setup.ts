@@ -33,6 +33,9 @@ beforeAll(() => {
   process.env.CHECKERS_SESSION_TTL_MINUTES ??= '15';
   process.env.CHECKERS_COOLDOWN_SECONDS ??= '0'; // disable for tests
   process.env.CHECKERS_MAX_DAILY_SESSIONS ??= '100';
+  // NODE_ENV is typed as a readonly string-literal union by Next.js'
+  // global type augmentation. Bracket-access bypasses that narrowing
+  // safely; the value is still a plain string at runtime.
   Object.assign(process.env, { NODE_ENV: process.env.NODE_ENV ?? 'test' });
 
   _resetEnvForTests();
