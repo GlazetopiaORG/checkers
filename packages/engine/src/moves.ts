@@ -6,15 +6,15 @@
  * applyMove(state, move)          — apply a move and return new state
  */
 
-import { piecesOf, samePosition } from './board.js';
-import { defaultConfig, type GameConfig } from './config.js';
+import { piecesOf, samePosition } from './board';
+import { defaultConfig, type GameConfig } from './config';
 import {
   applyMoveToBoard,
   captureMovesFrom,
   simpleMovesFrom,
-} from './rules.js';
-import type { GameState, Move, Position, Side } from './types.js';
-import { detectWinner } from './winner.js';
+} from './rules';
+import type { GameState, Move, Position, Side } from './types';
+import { detectWinner } from './winner';
 
 /**
  * All legal moves for the side to move in the given state.
@@ -130,7 +130,10 @@ export function applyMove(
     history: [...state.history, canonical],
   };
 
-  // Recompute status (win/loss/draw) after the move.
+  // Recompute status (win/loss/active) after the move.
+  // Note: detectWinner no longer returns 'draw' — the backend handles
+  // the no-progress threshold as a player-facing offer, not an
+  // automatic terminal. See winner.ts for details.
   return { ...draft, status: detectWinner(draft, config) };
 }
 

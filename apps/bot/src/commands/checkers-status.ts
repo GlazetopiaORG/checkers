@@ -1,8 +1,9 @@
 /**
- * /checkers-status — show the user's current mark count.
+ * /checkers-status — show the user's per-path progress.
  *
  * Read-only. Does not create a user or trigger any side effects.
- * If the user has never played, returns 0 / required.
+ * Phase 4.6.4.1: shows both Sheriff's Trial and Unbaked Duel separately;
+ * wins do not combine across paths.
  */
 
 import {
@@ -11,13 +12,13 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 
-import { getUserMarks } from '../backend-client.js';
-import { errorEmbed, marksStatusEmbed } from '../lib/embeds.js';
-import { describeBackendError } from '../lib/errors.js';
+import { getUserMarks } from '../backend-client';
+import { errorEmbed, marksStatusEmbed } from '../lib/embeds';
+import { describeBackendError } from '../lib/errors';
 
 export const checkersStatusCommandData = new SlashCommandBuilder()
   .setName('checkers-status')
-  .setDescription('Check how many marks you have against the Unbaked.');
+  .setDescription('Check your progress on both opponent paths (Sheriff & Unbaked).');
 
 export async function handleCheckersStatus(
   interaction: ChatInputCommandInteraction,
@@ -26,8 +27,10 @@ export async function handleCheckersStatus(
 
   try {
     const result = await getUserMarks(interaction.user.id);
+    // Phase 4.6.4.1: `paths` is now a REQUIRED field of the response.
+    // No fallback to combined-total view — the embed insists on it.
     await interaction.editReply({
-      embeds: [marksStatusEmbed({ marks: result.marks, required: result.required })],
+      embeds: [marksStatusEmbed({ paths: result.paths })],
     });
   } catch (err) {
     const friendly = describeBackendError(err);

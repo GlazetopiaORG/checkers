@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyMove, legalMoves } from '../src/moves.js';
-import { makeState } from './_helpers.js';
+import { applyMove, legalMoves } from '../src/moves';
+import { makeState } from './_helpers';
 
 describe('single capture', () => {
   it('player jumps adjacent CPU piece', () => {

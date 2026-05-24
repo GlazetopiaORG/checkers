@@ -13,11 +13,11 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   startSession,
   submitMove,
-} from '../../src/lib/checkers-service.js';
-import { _resetEnvForTests } from '../../src/lib/env.js';
-import { verifySessionToken } from '../../src/lib/jwt.js';
-import { getSupabase } from '../../src/lib/supabase.js';
-import { ensureDbReachable, wipeDatabase } from './_helpers.js';
+} from '../../src/lib/checkers-service';
+import { _resetEnvForTests } from '../../src/lib/env';
+import { verifySessionToken } from '../../src/lib/jwt';
+import { getSupabase } from '../../src/lib/supabase';
+import { ensureDbReachable, wipeDatabase } from './_helpers';
 
 let dbAvailable = false;
 

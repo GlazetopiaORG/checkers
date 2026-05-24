@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { initialState } from '../src/board.js';
-import { cpuMove, evaluate, pieceCounts } from '../src/ai.js';
-import { makeConfig } from '../src/config.js';
-import { applyMove, legalMoves } from '../src/moves.js';
-import { makeState } from './_helpers.js';
+import { initialState } from '../src/board';
+import { cpuMove, evaluate, pieceCounts } from '../src/ai';
+import { makeConfig } from '../src/config';
+import { applyMove, legalMoves } from '../src/moves';
+import { makeState } from './_helpers';
 
 describe('cpuMove', () => {
   it('returns null when game is not active', () => {

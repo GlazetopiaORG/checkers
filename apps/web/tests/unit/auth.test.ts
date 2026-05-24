@@ -2,10 +2,16 @@
  * Unit tests for auth primitives. No DB required.
  */
 
+// Phase 5.0.2: this side-effect import MUST be the very first import so
+// process.env is populated before vitest's resolver pulls in the env-aware
+// modules below. Without this guard, the test file's import graph could
+// evaluate env.ts before vitest's setupFiles get a chance to run.
+import '../_test-env';
+
 import { describe, expect, it } from 'vitest';
 
-import { computeBotSignature } from '../../src/lib/auth.js';
-import { signSessionToken, verifySessionToken, hashToken } from '../../src/lib/jwt.js';
+import { computeBotSignature } from '../../src/lib/auth';
+import { signSessionToken, verifySessionToken, hashToken } from '../../src/lib/jwt';
 
 describe('computeBotSignature', () => {
   it('produces stable HMAC', () => {

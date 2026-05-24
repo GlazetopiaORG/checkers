@@ -11,10 +11,10 @@ import {
   getLegalMoves,
   startSession,
   submitMove,
-} from '../../src/lib/checkers-service.js';
-import { verifySessionToken } from '../../src/lib/jwt.js';
-import { getSupabase } from '../../src/lib/supabase.js';
-import { ensureDbReachable, wipeDatabase } from './_helpers.js';
+} from '../../src/lib/checkers-service';
+import { verifySessionToken } from '../../src/lib/jwt';
+import { getSupabase } from '../../src/lib/supabase';
+import { ensureDbReachable, wipeDatabase } from './_helpers';
 
 let dbAvailable = false;
 

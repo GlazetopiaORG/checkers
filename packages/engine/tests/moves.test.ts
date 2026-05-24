@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { initialState } from '../src/board.js';
-import { makeConfig } from '../src/config.js';
-import { applyMove, legalMoves, movesEqual } from '../src/moves.js';
-import type { Move } from '../src/types.js';
-import { makeState, pos } from './_helpers.js';
+import { initialState } from '../src/board';
+import { makeConfig } from '../src/config';
+import { applyMove, legalMoves, movesEqual } from '../src/moves';
+import type { Move } from '../src/types';
+import { makeState, pos } from './_helpers';
 
 describe('legalMoves — opening position', () => {
   it('player has 7 legal opening slides', () => {

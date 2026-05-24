@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { defaultConfig, makeConfig } from '../src/config.js';
-import { legalMoves } from '../src/moves.js';
-import { makeState } from './_helpers.js';
+import { defaultConfig, makeConfig } from '../src/config';
+import { legalMoves } from '../src/moves';
+import { makeState } from './_helpers';
 
 describe('defaultConfig', () => {
   it('uses standard American checkers rules', () => {

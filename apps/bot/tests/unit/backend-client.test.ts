@@ -5,6 +5,9 @@
  * Uses fetch mocks — no real network.
  */
 
+// Phase 5.0.2: belt-and-braces env bootstrap. See README for rationale.
+import '../_test-env';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -115,13 +118,17 @@ describe('startSession', () => {
 });
 
 describe('getUserMarks', () => {
-  it('GETs with empty-body HMAC and discordId query', async () => {
+  it('GETs with empty-body HMAC, discordId query, and returns per-path data', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(200, {
         discordId: '123456789012345678',
-        marks: 2,
+        marks: 3,
         required: 3,
         levelPassed: false,
+        paths: {
+          sheriff: { marks: 2, required: 5, passed: false },
+          unbaked: { marks: 1, required: 3, passed: false },
+        },
       }),
     );
 
@@ -135,7 +142,49 @@ describe('getUserMarks', () => {
     const headers = init.headers as Record<string, string>;
     // Empty body signature should be the HMAC of "".
     expect(headers['x-checkers-signature']).toBe(_internals.sign(''));
-    expect(result.marks).toBe(2);
+
+    // Phase 4.6.4.1: per-path data is now required and accessible.
+    expect(result.paths.sheriff.marks).toBe(2);
+    expect(result.paths.sheriff.required).toBe(5);
+    expect(result.paths.sheriff.passed).toBe(false);
+    expect(result.paths.unbaked.marks).toBe(1);
+    expect(result.paths.unbaked.required).toBe(3);
+    expect(result.paths.unbaked.passed).toBe(false);
+  });
+
+  it('throws when the backend omits `paths` (no silent fallback)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        discordId: '123456789012345678',
+        marks: 2,
+        required: 3,
+        levelPassed: false,
+        // Intentionally missing `paths` — simulates an older backend.
+      }),
+    );
+
+    await expect(getUserMarks('123456789012345678')).rejects.toThrow(
+      /missing per-opponent `paths`/,
+    );
+  });
+
+  it('throws when `paths.sheriff` is missing required fields', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        discordId: '123456789012345678',
+        marks: 0,
+        required: 3,
+        levelPassed: false,
+        paths: {
+          // Missing `passed`
+          sheriff: { marks: 0, required: 5 },
+          unbaked: { marks: 0, required: 3, passed: false },
+        },
+      }),
+    );
+    await expect(getUserMarks('123456789012345678')).rejects.toThrow(
+      /missing per-opponent `paths`/,
+    );
   });
 });
 

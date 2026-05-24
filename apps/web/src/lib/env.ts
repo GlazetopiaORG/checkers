@@ -34,7 +34,18 @@ const EnvSchema = z.object({
   CHECKERS_COOLDOWN_SECONDS: z.coerce.number().int().nonnegative().default(30),
   CHECKERS_MAX_DAILY_SESSIONS: z.coerce.number().int().positive().default(20),
 
-  // Discord (used in Phase 4 but read here for completeness; optional in Phase 2)
+  // Phase 5: Discord role assignment via the bot's internal HTTP endpoint.
+  // The bot exposes POST /internal/grant-role on this URL (HMAC-signed via
+  // CHECKERS_BOT_SHARED_SECRET — the same shared secret used by the bot for
+  // its outbound calls into web). Optional during local dev: if unset, the
+  // web backend logs the would-be grant and continues. In production it
+  // must be set or you'll silently never grant the role.
+  CHECKERS_BOT_INTERNAL_URL: z.string().url().optional(),
+
+  // The Discord role granted when EITHER opponent path is passed. Read by
+  // the bot at startup. Web doesn't actually consume this value at runtime
+  // (the bot looks it up) but we keep it here so misconfiguration is
+  // visible in one place.
   DISCORD_LEVEL_PASSED_ROLE_ID: z.string().optional(),
 
   // Node env

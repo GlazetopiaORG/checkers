@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyMove, legalMoves } from '../src/moves.js';
-import { detectWinner } from '../src/winner.js';
-import { makeState } from './_helpers.js';
+import { applyMove, legalMoves } from '../src/moves';
+import { detectWinner, drawAvailable } from '../src/winner';
+import { makeState } from './_helpers';
 
 describe('detectWinner', () => {
   it('returns active when both sides have moves', () => {
@@ -51,7 +51,9 @@ describe('detectWinner', () => {
     expect(detectWinner(state)).toBe('lost');
   });
 
-  it("returns 'draw' after drawAfterMovesWithoutProgress moves", () => {
+  it("does NOT return 'draw' at the no-progress threshold (backend decides)", () => {
+    // Phase 4.6.3 change: detectWinner no longer collapses no-progress
+    // into a terminal 'draw'. The backend offers the player a choice.
     const state = makeState(
       [
         { row: 5, col: 2, side: 'player' },
@@ -60,7 +62,20 @@ describe('detectWinner', () => {
       'player',
       { movesWithoutProgress: 40 },
     );
-    expect(detectWinner(state)).toBe('draw');
+    expect(detectWinner(state)).toBe('active');
+    expect(drawAvailable(state)).toBe(true);
+  });
+
+  it('drawAvailable is false below the threshold', () => {
+    const state = makeState(
+      [
+        { row: 5, col: 2, side: 'player' },
+        { row: 2, col: 3, side: 'cpu' },
+      ],
+      'player',
+      { movesWithoutProgress: 39 },
+    );
+    expect(drawAvailable(state)).toBe(false);
   });
 });
 

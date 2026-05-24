@@ -15,19 +15,29 @@ import {
   applyMove,
   cpuMove,
   defaultConfig,
+  drawAvailable,
   initialState,
   legalMoves as engineLegalMoves,
+  makeConfig,
+  type GameConfig,
   type GameState,
   type Move,
   type Position,
 } from '@glazetopia/engine';
 import { createHash } from 'node:crypto';
 
-import { getEnv } from './env.js';
-import { ApiError } from './errors.js';
-import { hashToken, signSessionToken } from './jwt.js';
-import { deserializeState, serializeState } from './serialize.js';
-import { getSupabase } from './supabase.js';
+import { getEnv } from './env';
+import { ApiError } from './errors';
+import { requestRoleGrant } from './bot-client';
+import { hashToken, signSessionToken } from './jwt';
+import {
+  coerceOpponentType,
+  OPPONENTS,
+  parseOpponentTypeStrict,
+  type OpponentType,
+} from './opponents';
+import { deserializeState, serializeState } from './serialize';
+import { getSupabase } from './supabase';
 
 // -----------------------------------------------------------------------------
 // Types exposed to the API layer
@@ -55,6 +65,18 @@ export interface SessionView {
   movesWithoutProgress: number;
   lastMove: Move | null;
   expiresAt: string;
+  /**
+   * Phase 4.6.3: true when the no-progress threshold has been reached
+   * and the player can choose Keep Playing / Accept Draw / Resign.
+   * Backend-controlled; the client cannot modify it directly.
+   */
+  drawOffered: boolean;
+  /**
+   * Phase 4.6.4: which opponent path this session is on. The client uses
+   * this for display (CPU art, lore copy) — the BACKEND uses it for
+   * authoritative decisions (AI depth, marks-required).
+   */
+  opponentType: OpponentType;
 }
 
 export interface MoveResult {
@@ -66,8 +88,14 @@ export interface MoveResult {
   markAwarded: boolean;
   /** Set when this mark crossed the threshold and the level was passed. */
   levelPassed: boolean;
-  /** Live count of non-revoked marks for the user. */
+  /**
+   * Live count of non-revoked marks for the user ON THE CURRENT PATH.
+   * Phase 4.6.4: marks are tracked per-opponent. This count reflects
+   * the opponent path the session is on.
+   */
   marksTotal: number;
+  /** Phase 4.6.4: marks required to pass this opponent's path. */
+  marksRequired: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -97,6 +125,10 @@ export async function startSession(
 
   // Insert the session row with a temporary token_hash; we'll sign the
   // JWT with the assigned id, then update the row with the real hash.
+  // The session is created in 'pending' status — it stays pending until
+  // the player commits character + opponent choices via POST /commit
+  // (typically when they tap "Open the Comic"). This is the Phase 4.6.4
+  // single-commit point.
   const { data: inserted, error: insertErr } = await supabase
     .from('checkers_sessions')
     .insert({
@@ -109,6 +141,9 @@ export async function startSession(
       moves_without_progress: 0,
       expires_at: expiresAt.toISOString(),
       ip_hash: input.ipHash ?? null,
+      // opponent_type left as the DB default ('unbaked') until commit;
+      // backend will reject submitMove on pending sessions, so the
+      // player must commit before play starts.
     })
     .select('id')
     .single();
@@ -129,7 +164,7 @@ export async function startSession(
     env.CHECKERS_SESSION_TTL_MINUTES,
   );
 
-  // Persist token hash and full board state; flip status to 'active'.
+  // Persist token hash and full board state; status stays 'pending'.
   const serialized = serializeState(state);
   const { error: updateErr } = await supabase
     .from('checkers_sessions')
@@ -137,7 +172,7 @@ export async function startSession(
       token_hash: hash,
       board_state: serialized.board,
       turn: serialized.turn,
-      status: 'active',
+      // status remains 'pending' until commitSession is called.
     })
     .eq('id', sessionId);
 
@@ -167,6 +202,77 @@ export async function getSession(
 ): Promise<SessionView> {
   const row = await loadSessionRow(sessionId, expectedUserId, presentedToken);
   return rowToView(row);
+}
+
+// -----------------------------------------------------------------------------
+// commitSession — Phase 4.6.4
+//
+// Single-commit point invoked when the player taps "Open the Comic":
+//   - Validates the session is still 'pending' (cannot re-commit later)
+//   - Accepts an opponentType (sheriff | unbaked) — character is purely
+//     cosmetic and client-managed, so it does NOT flow through here
+//   - Flips status from 'pending' to 'active'
+//   - opponent_type is IMMUTABLE after this call
+//
+// Backend authority:
+//   - Difficulty (AI depth) is derived from opponent_type via the OPPONENTS
+//     registry. Client cannot send difficulty or marks-required.
+//   - Once status='active', any subsequent commit attempt is rejected.
+// -----------------------------------------------------------------------------
+
+export interface CommitSessionInput {
+  /** 'sheriff' or 'unbaked' — backend validates strictly */
+  opponentType: unknown;
+}
+
+export async function commitSession(
+  sessionId: string,
+  expectedUserId: string,
+  presentedToken: string,
+  input: CommitSessionInput,
+): Promise<SessionView> {
+  const supabase = getSupabase();
+  const row = await loadSessionRow(sessionId, expectedUserId, presentedToken);
+
+  if (row.status !== 'pending') {
+    // Idempotency: returning the current view is friendlier than 4xx,
+    // but spec says opponent must be immutable once active — so 409.
+    throw new ApiError(
+      'CONFLICT',
+      `Session has already been committed (status=${row.status}); opponent is immutable`,
+    );
+  }
+
+  let opponentType: OpponentType;
+  try {
+    opponentType = parseOpponentTypeStrict(input.opponentType);
+  } catch (err) {
+    throw new ApiError(
+      'BAD_REQUEST',
+      err instanceof Error ? err.message : 'Invalid opponentType',
+    );
+  }
+
+  const { error } = await supabase
+    .from('checkers_sessions')
+    .update({
+      status: 'active',
+      opponent_type: opponentType,
+    })
+    .eq('id', sessionId)
+    .eq('status', 'pending'); // race-safety: only flip if still pending
+  if (error) {
+    throw new ApiError(
+      'INTERNAL_ERROR',
+      `Failed to commit session: ${error.message}`,
+    );
+  }
+
+  return rowToView({
+    ...row,
+    status: 'active',
+    opponent_type: opponentType,
+  });
 }
 
 // -----------------------------------------------------------------------------
@@ -202,17 +308,27 @@ export async function submitMove(
   const row = await loadSessionRow(sessionId, expectedUserId, presentedToken);
 
   if (row.status !== 'active') {
+    // 'pending' lands here too — the session needs commitSession first.
     throw new ApiError('GAME_OVER', `Session is not active (status=${row.status})`);
   }
   if (row.turn !== 'player') {
     throw new ApiError('CONFLICT', "It is not the player's turn");
   }
 
+  // Phase 4.6.4: opponent is authoritative from the session row.
+  // The engine config used for the CPU's reply is derived from it; the
+  // client cannot influence AI depth.
+  const opponentType = coerceOpponentType(row.opponent_type);
+  const opponent = OPPONENTS[opponentType];
+  const engineConfig: GameConfig = makeConfig({ aiDepth: opponent.aiDepth });
+
   // Apply the player's move via the engine. Engine throws on illegal moves.
   let state = rowToState(row);
   let appliedPlayer: Move;
   try {
-    state = applyMove(state, proposedMove, defaultConfig);
+    // Player moves don't depend on aiDepth, but pass the same config for
+    // consistency (also handles draw threshold from config in detectWinner).
+    state = applyMove(state, proposedMove, engineConfig);
     // After applyMove, lastMove holds the canonical move with steps/captures
     // populated. We re-read it because the caller-provided Move may have
     // missing or stale fields.
@@ -228,9 +344,11 @@ export async function submitMove(
   // If the player's move ended the game, finalize. Otherwise let the CPU move.
   let cpuReply: Move | null = null;
   if (state.status === 'active' && state.turn === 'cpu') {
-    const choice = cpuMove(state, defaultConfig);
+    // engineConfig carries the per-opponent aiDepth — this is where the
+    // Sheriff vs Unbaked difficulty actually takes effect.
+    const choice = cpuMove(state, engineConfig);
     if (choice) {
-      state = applyMove(state, choice, defaultConfig);
+      state = applyMove(state, choice, engineConfig);
       cpuReply = state.lastMove!;
       await recordMove(sessionId, state.moveCount - 1, 'cpu', cpuReply, state.board);
     }
@@ -242,6 +360,10 @@ export async function submitMove(
     state.status === 'won' ||
     state.status === 'lost' ||
     state.status === 'draw';
+  // Phase 4.6.3: if the game is still active but the no-progress threshold
+  // has been reached, offer the player a draw choice instead of ending
+  // the game automatically.
+  const drawOffered = !isTerminal && drawAvailable(state, engineConfig);
   const update: Record<string, unknown> = {
     board_state: finalSerialized.board,
     turn: finalSerialized.turn,
@@ -249,6 +371,7 @@ export async function submitMove(
     move_count: finalSerialized.moveCount,
     moves_without_progress: finalSerialized.movesWithoutProgress,
     last_move_at: new Date().toISOString(),
+    draw_offered: drawOffered,
   };
   if (isTerminal) {
     update.ended_at = new Date().toISOString();
@@ -266,21 +389,64 @@ export async function submitMove(
   }
 
   // Mark awarding: ONLY when player won AND the game has enough moves.
+  // Phase 4.6.4: marks are stamped with the opponent_type and counted
+  // per-opponent.
   let markAwarded = false;
   let levelPassed = false;
   if (state.status === 'won') {
     if (finalSerialized.moveCount >= env.CHECKERS_MIN_MOVES_FOR_WIN) {
-      markAwarded = await awardMark(expectedUserId, sessionId);
+      markAwarded = await awardMark(expectedUserId, sessionId, opponentType);
       if (markAwarded) {
-        const totalAfter = await countUserMarks(expectedUserId);
-        if (totalAfter >= env.CHECKERS_MARKS_REQUIRED) {
-          // Phase 5 will wire actual Discord role assignment here. For now
-          // we just log so the rest of the flow is testable end-to-end.
+        const totalAfter = await countUserMarksByOpponent(expectedUserId, opponentType);
+        if (totalAfter >= opponent.marksRequired) {
+          levelPassed = true;
           // eslint-disable-next-line no-console
           console.log(
-            `[phase5-stub] award level pass to user=${expectedUserId} marks=${totalAfter}`,
+            `[phase5] ${opponentType} path passed for user=${expectedUserId} ` +
+              `marks=${totalAfter}/${opponent.marksRequired}`,
           );
-          levelPassed = true;
+
+          // Phase 5: request the bot to grant the Discord role. This call
+          // is fire-and-log: any failure (bot down, network error, role
+          // hierarchy issue) is logged but does NOT throw, so the player's
+          // win response succeeds regardless. Manual reconciliation can
+          // re-grant later if needed.
+          //
+          // We resolve the Discord ID from the users table — the session
+          // row only has the internal user UUID. If the lookup fails (e.g.
+          // RLS misconfiguration), we log and continue.
+          try {
+            const { data: userRow, error: userLookupErr } = await supabase
+              .from('users')
+              .select('discord_id')
+              .eq('id', expectedUserId)
+              .single();
+            if (userLookupErr || !userRow) {
+              // eslint-disable-next-line no-console
+              console.error(
+                `[phase5] role-grant skipped — user lookup failed ` +
+                  `user=${expectedUserId} err=${userLookupErr?.message ?? 'no row'}`,
+              );
+            } else {
+              const discordId = (userRow as { discord_id: string }).discord_id;
+              await requestRoleGrant({
+                discordId,
+                opponentType,
+                marksTotal: totalAfter,
+                marksRequired: opponent.marksRequired,
+              });
+            }
+          } catch (err) {
+            // Belt-and-braces: requestRoleGrant already swallows errors,
+            // but a Supabase exception could escape. Log and continue.
+            // eslint-disable-next-line no-console
+            console.error(
+              `[phase5] role-grant unexpected exception user=${expectedUserId} ` +
+                `path=${opponentType} err=${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+            );
+          }
         }
       }
     } else {
@@ -293,7 +459,9 @@ export async function submitMove(
     }
   }
 
-  const marksTotal = await countUserMarks(expectedUserId);
+  // marksTotal reflects PER-OPPONENT progress (the path the player is on)
+  // so the UI can show "3/5" or "2/3" correctly.
+  const marksTotal = await countUserMarksByOpponent(expectedUserId, opponentType);
 
   return {
     sessionView: {
@@ -305,12 +473,15 @@ export async function submitMove(
       movesWithoutProgress: finalSerialized.movesWithoutProgress,
       lastMove: finalSerialized.lastMove,
       expiresAt: row.expires_at,
+      drawOffered,
+      opponentType,
     },
     playerMove: appliedPlayer,
     cpuReply,
     markAwarded,
     levelPassed,
     marksTotal,
+    marksRequired: opponent.marksRequired,
   };
 }
 
@@ -345,6 +516,103 @@ export async function resignSession(
 }
 
 // -----------------------------------------------------------------------------
+// acceptDraw / declineDraw — Phase 4.6.3
+//
+// Both routes require:
+//   - The session must be in the draw-offered state (draw_offered = true)
+//   - The session must still be active
+//
+// acceptDraw  → status = 'draw', session ends, no mark.
+// declineDraw → draw_offered = false, moves_without_progress = 0, play continues.
+//
+// The CONFLICT error code is used when the client requests these actions on
+// a session that isn't currently offering a draw — prevents racing the
+// client into faking a draw acceptance on an arbitrary session.
+// -----------------------------------------------------------------------------
+
+export async function acceptDraw(
+  sessionId: string,
+  expectedUserId: string,
+  presentedToken: string,
+): Promise<SessionView> {
+  const supabase = getSupabase();
+  const row = await loadSessionRow(sessionId, expectedUserId, presentedToken);
+
+  if (row.status !== 'active') {
+    throw new ApiError('GAME_OVER', `Session is not active (status=${row.status})`);
+  }
+  if (!row.draw_offered) {
+    throw new ApiError(
+      'CONFLICT',
+      'A draw has not been offered on this session',
+    );
+  }
+
+  const endedAt = new Date().toISOString();
+  const { error } = await supabase
+    .from('checkers_sessions')
+    .update({
+      status: 'draw',
+      ended_at: endedAt,
+      draw_offered: false,
+    })
+    .eq('id', sessionId);
+  if (error) {
+    throw new ApiError(
+      'INTERNAL_ERROR',
+      `Failed to accept draw: ${error.message}`,
+    );
+  }
+  return rowToView({
+    ...row,
+    status: 'draw',
+    ended_at: endedAt,
+    draw_offered: false,
+  });
+}
+
+export async function declineDraw(
+  sessionId: string,
+  expectedUserId: string,
+  presentedToken: string,
+): Promise<SessionView> {
+  const supabase = getSupabase();
+  const row = await loadSessionRow(sessionId, expectedUserId, presentedToken);
+
+  if (row.status !== 'active') {
+    throw new ApiError('GAME_OVER', `Session is not active (status=${row.status})`);
+  }
+  if (!row.draw_offered) {
+    throw new ApiError(
+      'CONFLICT',
+      'A draw has not been offered on this session',
+    );
+  }
+
+  const { error } = await supabase
+    .from('checkers_sessions')
+    .update({
+      draw_offered: false,
+      // Per Phase 4.6.3 design decision (A): reset the no-progress count
+      // when the player commits to keep playing. The next draw offer can
+      // come at the threshold again later.
+      moves_without_progress: 0,
+    })
+    .eq('id', sessionId);
+  if (error) {
+    throw new ApiError(
+      'INTERNAL_ERROR',
+      `Failed to decline draw: ${error.message}`,
+    );
+  }
+  return rowToView({
+    ...row,
+    moves_without_progress: 0,
+    draw_offered: false,
+  });
+}
+
+// -----------------------------------------------------------------------------
 // Internal helpers
 // -----------------------------------------------------------------------------
 
@@ -362,6 +630,10 @@ interface SessionRow {
   ended_at: string | null;
   expires_at: string;
   ip_hash: string | null;
+  /** Phase 4.6.3: column added in 20260520000001_add_draw_offered.sql */
+  draw_offered: boolean;
+  /** Phase 4.6.4: column added in 20260521000001_add_opponent_type.sql */
+  opponent_type: OpponentType;
 }
 
 async function loadSessionRow(
@@ -428,6 +700,8 @@ function rowToView(row: SessionRow): SessionView {
     movesWithoutProgress: row.moves_without_progress,
     lastMove: null,
     expiresAt: row.expires_at,
+    drawOffered: row.draw_offered ?? false,
+    opponentType: coerceOpponentType(row.opponent_type),
   };
 }
 
@@ -573,11 +847,16 @@ async function recordMove(
   }
 }
 
-async function awardMark(userId: string, sessionId: string): Promise<boolean> {
+async function awardMark(
+  userId: string,
+  sessionId: string,
+  opponentType: OpponentType,
+): Promise<boolean> {
   const supabase = getSupabase();
   const { error } = await supabase.from('checkers_marks').insert({
     user_id: userId,
     session_id: sessionId,
+    opponent_type: opponentType,
   });
   if (!error) return true;
   // 23505 = unique violation on session_id — mark already exists for this
@@ -587,15 +866,24 @@ async function awardMark(userId: string, sessionId: string): Promise<boolean> {
   throw new ApiError('INTERNAL_ERROR', `Failed to award mark: ${error.message}`);
 }
 
-async function countUserMarks(userId: string): Promise<number> {
+/**
+ * Phase 4.6.4: per-opponent mark count. The level-pass check uses this so
+ * Sheriff wins only count toward the Sheriff path and Unbaked wins only
+ * count toward the Unbaked path.
+ */
+async function countUserMarksByOpponent(
+  userId: string,
+  opponentType: OpponentType,
+): Promise<number> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.rpc('count_user_marks', {
+  const { data, error } = await supabase.rpc('count_user_marks_by_opponent', {
     p_user_id: userId,
+    p_opponent_type: opponentType,
   });
   if (error) {
     throw new ApiError(
       'INTERNAL_ERROR',
-      `Failed to count marks: ${error.message}`,
+      `Failed to count marks for opponent ${opponentType}: ${error.message}`,
     );
   }
   return (data as number) ?? 0;
@@ -612,9 +900,44 @@ export function sha256(input: string): string {
 
 export interface UserMarksResult {
   discordId: string;
+  /**
+   * Sum of marks across both opponent paths. This field is **deprecated
+   * for display** because it implies that wins combine across paths,
+   * which they don't. The bot ignores this on screen as of Phase 4.6.4.1
+   * — `paths` below is the only authoritative display source.
+   *
+   * Kept on the wire for API compatibility with any older consumer; do
+   * NOT introduce new code that uses it for level-pass decisions.
+   *
+   * @deprecated Use `paths.sheriff.marks` / `paths.unbaked.marks`.
+   */
   marks: number;
+  /**
+   * Legacy single-threshold required count (env CHECKERS_MARKS_REQUIRED).
+   * Phase 4.6.4 introduced per-opponent thresholds — see `paths` below
+   * for the authoritative values.
+   *
+   * @deprecated Use `paths.sheriff.required` / `paths.unbaked.required`.
+   */
   required: number;
+  /**
+   * True if EITHER path has been passed.
+   *
+   * IMPORTANT: this is `sheriffPassed || unbakedPassed`. It is **never**
+   * `(sheriffMarks + unbakedMarks) >= someThreshold`. Wins on one path do
+   * not contribute to passing the other.
+   */
   levelPassed: boolean;
+  /**
+   * Phase 4.6.4: per-opponent path progress. Required field — every
+   * response includes this. The bot relies on it; if the backend can't
+   * compute it, the call fails rather than returning a misleading
+   * combined view.
+   */
+  paths: {
+    sheriff: { marks: number; required: number; passed: boolean };
+    unbaked: { marks: number; required: number; passed: boolean };
+  };
 }
 
 /**
@@ -642,23 +965,45 @@ export async function getUserMarks(discordId: string): Promise<UserMarksResult> 
   }
 
   if (!user) {
-    // User has never played. Not an error — return zero marks.
     return {
       discordId,
       marks: 0,
       required: env.CHECKERS_MARKS_REQUIRED,
       levelPassed: false,
+      paths: {
+        sheriff: { marks: 0, required: OPPONENTS.sheriff.marksRequired, passed: false },
+        unbaked: { marks: 0, required: OPPONENTS.unbaked.marksRequired, passed: false },
+      },
     };
   }
 
   const userId = (user as { id: string }).id;
-  const marks = await countUserMarks(userId);
+  const [sheriffMarks, unbakedMarks] = await Promise.all([
+    countUserMarksByOpponent(userId, 'sheriff'),
+    countUserMarksByOpponent(userId, 'unbaked'),
+  ]);
+  const totalMarks = sheriffMarks + unbakedMarks;
+
+  const sheriffPassed = sheriffMarks >= OPPONENTS.sheriff.marksRequired;
+  const unbakedPassed = unbakedMarks >= OPPONENTS.unbaked.marksRequired;
 
   return {
     discordId,
-    marks,
+    marks: totalMarks,
     required: env.CHECKERS_MARKS_REQUIRED,
-    levelPassed: marks >= env.CHECKERS_MARKS_REQUIRED,
+    levelPassed: sheriffPassed || unbakedPassed,
+    paths: {
+      sheriff: {
+        marks: sheriffMarks,
+        required: OPPONENTS.sheriff.marksRequired,
+        passed: sheriffPassed,
+      },
+      unbaked: {
+        marks: unbakedMarks,
+        required: OPPONENTS.unbaked.marksRequired,
+        passed: unbakedPassed,
+      },
+    },
   };
 }
 

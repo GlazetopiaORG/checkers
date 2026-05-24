@@ -16,11 +16,11 @@ export type {
   Piece,
   Position,
   Side,
-} from './types.js';
-export type { GameConfig } from './config.js';
+} from './types';
+export type { GameConfig } from './config';
 
 // Config
-export { defaultConfig, makeConfig } from './config.js';
+export { defaultConfig, makeConfig } from './config';
 
 // Board / state construction and helpers
 export {
@@ -33,13 +33,13 @@ export {
   isInBoundsPos,
   piecesOf,
   samePosition,
-} from './board.js';
+} from './board';
 
 // Move generation and application
-export { applyMove, legalMoves, movesEqual } from './moves.js';
+export { applyMove, legalMoves, movesEqual } from './moves';
 
 // Game-end detection
-export { detectWinner, hasAnyMove } from './winner.js';
+export { detectWinner, drawAvailable, hasAnyMove } from './winner';
 
 // AI
-export { cpuMove, evaluate, pieceCounts } from './ai.js';
+export { cpuMove, evaluate, pieceCounts } from './ai';

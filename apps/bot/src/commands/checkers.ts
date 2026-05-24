@@ -17,15 +17,15 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 
-import { startSession } from '../backend-client.js';
+import { startSession } from '../backend-client';
 import {
   cooldownEmbed,
   errorEmbed,
   sessionStartedEmbed,
-} from '../lib/embeds.js';
-import { describeBackendError } from '../lib/errors.js';
-import { getUserMarks } from '../backend-client.js';
-import type { CooldownTracker } from '../lib/cooldown.js';
+} from '../lib/embeds';
+import { describeBackendError } from '../lib/errors';
+import { getUserMarks } from '../backend-client';
+import type { CooldownTracker } from '../lib/cooldown';
 
 export const checkersCommandData = new SlashCommandBuilder()
   .setName('checkers')
@@ -55,22 +55,25 @@ export function makeCheckersHandler(cooldown: CooldownTracker) {
         discordUsername: interaction.user.username,
       });
 
-      // 4. Fetch marks count for the embed. If this fails we still want to
-      //    show the session link — make it best-effort.
-      let marks = 0;
-      let required = 3;
+      // 4. Fetch per-opponent marks for the embed. Best-effort — if the
+      //    backend fails we still want to show the session link, so we
+      //    fall back to all-zero paths.
+      const ZERO_PATHS = {
+        sheriff: { marks: 0, required: 5, passed: false },
+        unbaked: { marks: 0, required: 3, passed: false },
+      };
+      let paths = ZERO_PATHS;
       try {
         const result = await getUserMarks(interaction.user.id);
-        marks = result.marks;
-        required = result.required;
+        paths = result.paths;
       } catch {
-        // Silent — embed will just show "0 / 3" which is better than failing.
+        // Silent — embed shows the zero-paths fallback. Better than failing
+        // the entire /checkers command for a status read.
       }
 
       // 5. Build reply: embed + link button.
       const embed = sessionStartedEmbed({
-        marks,
-        required,
+        paths,
         expiresAt: session.expiresAt,
       });
 

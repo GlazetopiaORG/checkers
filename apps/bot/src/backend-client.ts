@@ -12,7 +12,7 @@
 
 import { createHmac } from 'node:crypto';
 
-import { getEnv } from './env.js';
+import { getEnv } from './env';
 
 const HMAC_HEADER = 'x-checkers-signature';
 
@@ -30,9 +30,30 @@ export interface StartSessionResponse {
 
 export interface UserMarksResponse {
   discordId: string;
+  /**
+   * Combined cross-path total. **Do not display** — this is misleading
+   * because wins on different paths don't combine for level-pass purposes.
+   * Kept on the wire only for backward compatibility with any older
+   * consumer; the bot uses `paths` exclusively.
+   *
+   * @deprecated Display `paths.sheriff.marks` / `paths.unbaked.marks` instead.
+   */
   marks: number;
+  /**
+   * @deprecated Single env-derived threshold; use `paths.<id>.required`.
+   */
   required: number;
+  /** True if EITHER path has been passed (sheriffPassed || unbakedPassed). */
   levelPassed: boolean;
+  /**
+   * Phase 4.6.4.1: REQUIRED. Per-opponent breakdown. If a backend
+   * response omits this, the bot fails loudly rather than silently
+   * showing a misleading combined view.
+   */
+  paths: {
+    sheriff: { marks: number; required: number; passed: boolean };
+    unbaked: { marks: number; required: number; passed: boolean };
+  };
 }
 
 export interface CancelSessionResponse {
@@ -161,11 +182,45 @@ export async function startSession(input: {
 }
 
 export async function getUserMarks(discordId: string): Promise<UserMarksResponse> {
-  return call<UserMarksResponse>({
+  const raw = await call<unknown>({
     method: 'GET',
     path: '/api/checkers/marks/me',
     query: { discordId },
   });
+
+  // Phase 4.6.4.1: runtime guard. The wire contract requires per-path
+  // breakdown; without it, the bot would have to fall back to a misleading
+  // combined-total view. We refuse instead — better a loud error than a
+  // misleading status embed.
+  if (!isUserMarksResponseWithPaths(raw)) {
+    throw new Error(
+      'Backend /marks/me response is missing per-opponent `paths`. ' +
+        'This is required as of Phase 4.6.4.1. The backend may be out of date.',
+    );
+  }
+  return raw;
+}
+
+function isUserMarksResponseWithPaths(v: unknown): v is UserMarksResponse {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  if (typeof o.discordId !== 'string') return false;
+  if (typeof o.marks !== 'number') return false;
+  if (typeof o.required !== 'number') return false;
+  if (typeof o.levelPassed !== 'boolean') return false;
+  if (!o.paths || typeof o.paths !== 'object') return false;
+  const p = o.paths as Record<string, unknown>;
+  return isPathEntry(p.sheriff) && isPathEntry(p.unbaked);
+}
+
+function isPathEntry(v: unknown): v is { marks: number; required: number; passed: boolean } {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.marks === 'number' &&
+    typeof o.required === 'number' &&
+    typeof o.passed === 'boolean'
+  );
 }
 
 export async function cancelActiveSession(

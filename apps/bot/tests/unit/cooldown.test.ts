@@ -1,3 +1,6 @@
+// Phase 5.0.2: belt-and-braces env bootstrap. See README for rationale.
+import '../_test-env';
+
 import { describe, expect, it } from 'vitest';
 
 import { CooldownTracker } from '../../src/lib/cooldown';

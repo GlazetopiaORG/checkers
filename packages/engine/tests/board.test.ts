@@ -10,7 +10,7 @@ import {
   isInBoundsPos,
   piecesOf,
   samePosition,
-} from '../src/board.js';
+} from '../src/board';
 
 describe('board basics', () => {
   it('isDarkSquare returns true only for odd (row+col)', () => {

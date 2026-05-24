@@ -7,7 +7,7 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-import { getEnv } from './env.js';
+import { getEnv } from './env';
 
 let cached: SupabaseClient | null = null;
 

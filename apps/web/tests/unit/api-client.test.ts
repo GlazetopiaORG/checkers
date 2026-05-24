@@ -7,7 +7,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  acceptDraw,
   CheckersApiError,
+  commitSession,
+  declineDraw,
   fetchLegalMoves,
   fetchSession,
   resignSession,
@@ -130,11 +133,123 @@ describe('api-client', () => {
         movesWithoutProgress: 0,
         lastMove: null,
         expiresAt: new Date().toISOString(),
+        drawOffered: false,
+        opponentType: 'unbaked',
       }),
     );
 
     const v = await resignSession({ sessionId: SID, token: TOK });
     expect(v.status).toBe('abandoned');
+  });
+
+  it('acceptDraw POSTs to /accept-draw', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        sessionId: SID,
+        board: [],
+        turn: 'player',
+        status: 'draw',
+        moveCount: 80,
+        movesWithoutProgress: 40,
+        lastMove: null,
+        expiresAt: new Date().toISOString(),
+        drawOffered: false,
+        opponentType: 'unbaked',
+      }),
+    );
+    const v = await acceptDraw({ sessionId: SID, token: TOK });
+    const { url, init } = lastCall();
+    expect(url).toBe(`/api/checkers/session/${SID}/accept-draw`);
+    expect(init.method).toBe('POST');
+    expect(v.status).toBe('draw');
+    expect(v.drawOffered).toBe(false);
+  });
+
+  it('declineDraw POSTs to /decline-draw', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        sessionId: SID,
+        board: [],
+        turn: 'player',
+        status: 'active',
+        moveCount: 40,
+        movesWithoutProgress: 0,
+        lastMove: null,
+        expiresAt: new Date().toISOString(),
+        drawOffered: false,
+        opponentType: 'unbaked',
+      }),
+    );
+    const v = await declineDraw({ sessionId: SID, token: TOK });
+    const { url, init } = lastCall();
+    expect(url).toBe(`/api/checkers/session/${SID}/decline-draw`);
+    expect(init.method).toBe('POST');
+    expect(v.status).toBe('active');
+    expect(v.movesWithoutProgress).toBe(0);
+    expect(v.drawOffered).toBe(false);
+  });
+
+  it('acceptDraw surfaces 409 CONFLICT when no draw is offered', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse(409, {
+        error: {
+          code: 'CONFLICT',
+          message: 'A draw has not been offered on this session',
+        },
+      }),
+    );
+    let caught: unknown;
+    try {
+      await acceptDraw({ sessionId: SID, token: TOK });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(CheckersApiError);
+    expect((caught as CheckersApiError).code).toBe('CONFLICT');
+    expect((caught as CheckersApiError).status).toBe(409);
+  });
+
+  it('commitSession POSTs opponentType and returns active view', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        sessionId: SID,
+        board: [],
+        turn: 'player',
+        status: 'active',
+        moveCount: 0,
+        movesWithoutProgress: 0,
+        lastMove: null,
+        expiresAt: new Date().toISOString(),
+        drawOffered: false,
+        opponentType: 'sheriff',
+      }),
+    );
+    const v = await commitSession({ sessionId: SID, token: TOK }, 'sheriff');
+    const { url, init } = lastCall();
+    expect(url).toBe(`/api/checkers/session/${SID}/commit`);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ opponentType: 'sheriff' });
+    expect(v.status).toBe('active');
+    expect(v.opponentType).toBe('sheriff');
+  });
+
+  it('commitSession surfaces 409 CONFLICT when session is no longer pending', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse(409, {
+        error: {
+          code: 'CONFLICT',
+          message: 'Session has already been committed; opponent is immutable',
+        },
+      }),
+    );
+    let caught: unknown;
+    try {
+      await commitSession({ sessionId: SID, token: TOK }, 'unbaked');
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(CheckersApiError);
+    expect((caught as CheckersApiError).code).toBe('CONFLICT');
   });
 
   it('throws a typed error on 4xx with JSON body', async () => {

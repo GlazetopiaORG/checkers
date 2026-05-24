@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import '@/styles/checkers.css';
+import '@/styles/board-themes.css';
 
 export const metadata: Metadata = {
   title: 'Glazetopia Checkers',

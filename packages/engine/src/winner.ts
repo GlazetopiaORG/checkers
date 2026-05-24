@@ -1,38 +1,63 @@
 /**
  * Game-end detection: win, loss, or draw.
  *
- * A side loses when they have no legal moves on their turn. That covers
- * both "all pieces captured" and "all pieces blocked" without separate cases.
- */
-
-import { piecesOf } from './board.js';
-import { defaultConfig, type GameConfig } from './config.js';
-import { captureMovesFrom, simpleMovesFrom } from './rules.js';
-import type { GameState, GameStatus, Side } from './types.js';
-
-/**
- * Determine the status of the given state.
+ * Two-tier model (Phase 4.6.3):
+ *
+ *   1. detectWinner() — reports the AUTOMATIC terminal status.
+ *      It returns 'won', 'lost', or 'active' based purely on legal moves.
+ *      A side that has no legal moves on its turn loses.
+ *      It NEVER returns 'draw' on its own — the engine does not collapse
+ *      a no-progress threshold into a terminal status. Why: the backend
+ *      offers the player a choice (Keep playing / Accept draw / Resign)
+ *      when the no-progress threshold is reached, rather than ending the
+ *      game silently.
+ *
+ *   2. drawAvailable() — read-only signal: is the no-progress count at or
+ *      above the configured threshold? The backend uses this to decide
+ *      whether to flag `draw_offered = true` on the session row.
  *
  * IMPORTANT: this expects `state.turn` to already be the side about to move
- * (i.e. it should be called AFTER turn flip in applyMove). It checks whether
- * that side has any legal response.
+ * (i.e. it should be called AFTER turn flip in applyMove).
+ *
+ * The AI's evaluation function may still treat draw-available states as
+ * neutral (score 0) for search purposes — but only the backend decides
+ * whether a draw actually ends the game.
+ */
+
+import { piecesOf } from './board';
+import { defaultConfig, type GameConfig } from './config';
+import { captureMovesFrom, simpleMovesFrom } from './rules';
+import type { GameState, GameStatus, Side } from './types';
+
+/**
+ * Report the AUTOMATIC terminal status for a state, or 'active' if play
+ * continues. Returns 'won' / 'lost' only when the side to move has no
+ * legal moves (forced game-over). NEVER returns 'draw' — see file header.
  */
 export function detectWinner(
   state: GameState,
   config: GameConfig = defaultConfig,
 ): GameStatus {
-  // Draw by inactivity (no captures, no promotions).
-  if (state.movesWithoutProgress >= config.drawAfterMovesWithoutProgress) {
-    return 'draw';
-  }
-
   const sideToMove: Side = state.turn;
   if (!hasAnyMove(state, sideToMove, config)) {
     // The side to move cannot move — they lose.
     return sideToMove === 'player' ? 'lost' : 'won';
   }
-
   return 'active';
+}
+
+/**
+ * Read-only: is the state at or above the no-progress threshold for a
+ * draw offer? The backend uses this to decide whether to offer the player
+ * a Keep-Playing / Accept-Draw / Resign choice.
+ *
+ * Does NOT mutate state. Does NOT auto-terminate the game.
+ */
+export function drawAvailable(
+  state: GameState,
+  config: GameConfig = defaultConfig,
+): boolean {
+  return state.movesWithoutProgress >= config.drawAfterMovesWithoutProgress;
 }
 
 /**

@@ -8,7 +8,6 @@
  */
 
 import { GameClient } from './_components/GameClient';
-import { getEnv } from '@/lib/env';
 
 interface PageProps {
   params: { sessionId: string };
@@ -54,13 +53,13 @@ export default function CheckersPage({
     );
   }
 
-  const env = getEnv();
+  // Phase 5: marksRequired is now opponent-derived by GameClient itself.
+  // No env lookup needed here.
 
   return (
     <GameClient
       sessionId={sessionId}
       token={token}
-      marksRequired={env.CHECKERS_MARKS_REQUIRED}
     />
   );
 }

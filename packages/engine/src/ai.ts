@@ -10,10 +10,10 @@
  * production you can wrap `cpuMove` and pick randomly among top moves.
  */
 
-import { piecesOf } from './board.js';
-import { defaultConfig, type GameConfig } from './config.js';
-import { applyMove, legalMoves } from './moves.js';
-import type { Board, GameState, Move, Piece, Side } from './types.js';
+import { piecesOf } from './board';
+import { defaultConfig, type GameConfig } from './config';
+import { applyMove, legalMoves } from './moves';
+import type { Board, GameState, Move, Piece, Side } from './types';
 
 // Evaluation weights — tuned by intuition; can be refined later.
 const MAN_VALUE = 100;

@@ -3,7 +3,7 @@
  * All functions here are pure; no state mutation.
  */
 
-import type { Board, Cell, GameState, Position } from './types.js';
+import type { Board, Cell, GameState, Position } from './types';
 
 export const BOARD_SIZE = 8;
 

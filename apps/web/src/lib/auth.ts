@@ -15,9 +15,9 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 
-import { getEnv } from './env.js';
-import { ApiError } from './errors.js';
-import { type SessionTokenPayload, verifySessionToken } from './jwt.js';
+import { getEnv } from './env';
+import { ApiError } from './errors';
+import { type SessionTokenPayload, verifySessionToken } from './jwt';
 
 // -----------------------------------------------------------------------------
 // Bot HMAC auth

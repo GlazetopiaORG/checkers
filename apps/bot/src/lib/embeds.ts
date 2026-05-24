@@ -24,9 +24,18 @@ const COLOR_NEUTRAL = 0x5b3a1a;
  * The launch URL is rendered as a link button by the command handler;
  * this embed sits alongside it.
  */
+/**
+ * Session-started embed shown when /checkers launches a new duel.
+ *
+ * Phase 4.6.4.1: shows per-path progress (Sheriff and Unbaked) instead of
+ * a combined "marks" total. Wins on one path do NOT count toward passing
+ * the other; the embed makes that explicit.
+ */
 export function sessionStartedEmbed(opts: {
-  marks: number;
-  required: number;
+  paths: {
+    sheriff: { marks: number; required: number; passed: boolean };
+    unbaked: { marks: number; required: number; passed: boolean };
+  };
   expiresAt: string;
 }): EmbedBuilder {
   return new EmbedBuilder()
@@ -38,51 +47,129 @@ export function sessionStartedEmbed(opts: {
     )
     .addFields(
       {
-        name: 'Marks',
-        value: marksLine(opts.marks, opts.required),
+        name: "Sheriff's Trial",
+        value: pathLine(
+          opts.paths.sheriff.marks,
+          opts.paths.sheriff.required,
+          opts.paths.sheriff.passed,
+        ),
+        inline: true,
+      },
+      {
+        name: 'Unbaked Duel',
+        value: pathLine(
+          opts.paths.unbaked.marks,
+          opts.paths.unbaked.required,
+          opts.paths.unbaked.passed,
+        ),
         inline: true,
       },
       {
         name: 'Expires',
         value: `<t:${unixSeconds(opts.expiresAt)}:R>`,
-        inline: true,
+        inline: false,
       },
-    );
+    )
+    .setFooter({ text: 'Each path is independent — wins do not combine.' });
 }
 
 /**
- * "/checkers-status" — posted in response to the status command.
+ * /checkers-status embed — per-opponent path breakdown.
+ *
+ * Phase 4.6.4.1: the legacy single-count fallback was REMOVED. The embed
+ * now ONLY shows per-path progress, and `paths` is required. This is to
+ * prevent the misleading impression that wins on different paths combine
+ * toward a single passing threshold.
+ *
+ * Wins on the Sheriff path NEVER count toward the Unbaked threshold and
+ * vice versa. The "Level Passed" line is sheriffPassed || unbakedPassed.
  */
 export function marksStatusEmbed(opts: {
-  marks: number;
-  required: number;
+  paths: {
+    sheriff: { marks: number; required: number; passed: boolean };
+    unbaked: { marks: number; required: number; passed: boolean };
+  };
 }): EmbedBuilder {
-  const passed = opts.marks >= opts.required;
-  const builder = new EmbedBuilder()
-    .setColor(passed ? COLOR_SUCCESS : COLOR_ACCENT)
-    .setTitle('Your standing against the Unbaked')
-    .addFields({
-      name: 'Marks',
-      value: marksLine(opts.marks, opts.required),
-      inline: false,
-    });
+  const sheriffPassed = opts.paths.sheriff.passed;
+  const unbakedPassed = opts.paths.unbaked.passed;
+  const anyPassed = sheriffPassed || unbakedPassed;
 
-  if (passed) {
+  const builder = new EmbedBuilder()
+    .setColor(anyPassed ? COLOR_SUCCESS : COLOR_ACCENT)
+    .setTitle('Your standing in Glazetopia Checkers')
+    .addFields(
+      {
+        name: "Sheriff's Trial",
+        value: pathLine(
+          opts.paths.sheriff.marks,
+          opts.paths.sheriff.required,
+          opts.paths.sheriff.passed,
+        ),
+        inline: true,
+      },
+      {
+        name: 'Unbaked Duel',
+        value: pathLine(
+          opts.paths.unbaked.marks,
+          opts.paths.unbaked.required,
+          opts.paths.unbaked.passed,
+        ),
+        inline: true,
+      },
+      {
+        name: 'Level Passed',
+        value: levelPassedSummary(sheriffPassed, unbakedPassed),
+        inline: false,
+      },
+    )
+    .setFooter({ text: 'Each path is independent — wins do not combine.' });
+
+  // Narrative description tailored to the player's current state.
+  if (sheriffPassed && unbakedPassed) {
     builder.setDescription(
-      "You've cleared this hollow of the Unbaked. The level is yours.",
+      'Both paths cleared. The Sheriff salutes; the Unbaked stays quiet.',
     );
-  } else if (opts.marks === 0) {
+  } else if (sheriffPassed) {
     builder.setDescription(
-      'No duels yet. Run `/checkers` to face the Unbaked for the first time.',
+      "The Sheriff's badge is yours. The Unbaked still waits in the shadows.",
+    );
+  } else if (unbakedPassed) {
+    builder.setDescription(
+      "You've broken the Unbaked. The Sheriff's trial remains.",
+    );
+  } else if (opts.paths.sheriff.marks === 0 && opts.paths.unbaked.marks === 0) {
+    builder.setDescription(
+      'No duels yet. Run `/checkers` to choose your path.',
     );
   } else {
-    const left = opts.required - opts.marks;
+    const sheriffLeft = Math.max(
+      0,
+      opts.paths.sheriff.required - opts.paths.sheriff.marks,
+    );
+    const unbakedLeft = Math.max(
+      0,
+      opts.paths.unbaked.required - opts.paths.unbaked.marks,
+    );
     builder.setDescription(
-      `${left} more ${left === 1 ? 'duel' : 'duels'} stands between you and the level pass.`,
+      `Sheriff: ${sheriffLeft} to go. Unbaked: ${unbakedLeft} to go.`,
     );
   }
 
   return builder;
+}
+
+function pathLine(marks: number, required: number, passed: boolean): string {
+  const filled = '🟡'.repeat(Math.min(marks, required));
+  const empty = '⚫'.repeat(Math.max(0, required - marks));
+  const checkmark = passed ? '  ✅' : '';
+  return `${filled}${empty}  **${marks} / ${required} wins**${checkmark}`;
+}
+
+function levelPassedSummary(sheriffPassed: boolean, unbakedPassed: boolean): string {
+  if (sheriffPassed && unbakedPassed) return 'Yes — both paths';
+  if (sheriffPassed) return "Yes — Sheriff's Trial";
+  if (unbakedPassed) return 'Yes — Unbaked Duel';
+  return 'No';
 }
 
 /**
@@ -120,13 +207,6 @@ export function infoEmbed(opts: { title: string; message: string }): EmbedBuilde
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
-
-function marksLine(marks: number, required: number): string {
-  // Filled dots for earned marks, hollow for remaining.
-  const filled = '🟡'.repeat(Math.min(marks, required));
-  const empty = '⚫'.repeat(Math.max(0, required - marks));
-  return `${filled}${empty}  **${marks} / ${required}**`;
-}
 
 function unixSeconds(iso: string): number {
   return Math.floor(new Date(iso).getTime() / 1000);

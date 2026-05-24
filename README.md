@@ -8,7 +8,17 @@ A Discord-launched checkers mini-game where players battle the Unbaked. Three wi
 - ✅ **Phase 2** — Backend API + Supabase (`apps/web`, `supabase/`)
 - ✅ **Phase 3** — Frontend UI at `/checkers/[sessionId]` (`apps/web`)
 - ✅ **Phase 4** — Discord bot (`apps/bot`)
-- ⏳ **Phase 5** — Mark-triggered Discord role assignment
+- ✅ **Phase 4.5** — Bakery-themed UI polish, real character art (D'Lish + Unbaked), slower readable animations
+- ✅ **Phase 4.6** — Comic-cover opening + 5 deterministic board themes (bakery, Glaze Gulch, Frosting, Unbaked, Comic)
+- ✅ **Phase 4.6.1** — "The Crumb Trail" side panel (lore, duel status, mystery breadcrumbs)
+- ✅ **Phase 4.6.2** — Unified game stage layout (page-lift reveal, board + panel inside one frame)
+- ✅ **Phase 4.6.3** — Draw choice flow, character selection (6 heroes), regression fixes
+- ✅ **Phase 4.6.4** — Opponent paths (Sheriff Buttercream — 5 wins, easier; The Unbaked — 3 wins, harder)
+- ✅ **Phase 4.6.4.1** — Discord status per-path display (removed combined-total view)
+- ✅ **Phase 5** — Discord role assignment via bot HTTP endpoint; opponent-aware HUD
+- ✅ **Phase 5.0.1** — Test bootstrap hardening: import-time env injection, role-service mock-overwrite bug fix, BOT_HTTP_PORT=0 (OS-assigned) allowed
+- ✅ **Phase 5.0.2** — Per-test-file env pre-import guard for auth.test.ts and bot-client.test.ts
+- ✅ **Phase 5.0.3** — Three-layer env bootstrap: vitest test.env (truly pre-import) + setupFiles + per-test guards, all reading from shared frozen defaults
 - ⏳ **Phase 6** — Anti-cheat monitoring & alerts
 
 ## Repo layout

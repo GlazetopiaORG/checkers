@@ -2,7 +2,7 @@
  * Test helpers. Not exported from the package; tests only.
  */
 
-import { initialState } from '../src/board.js';
+import { initialState } from '../src/board';
 import type {
   Board,
   Cell,
@@ -10,7 +10,7 @@ import type {
   Piece,
   Position,
   Side,
-} from '../src/types.js';
+} from '../src/types';
 
 export interface PieceSpec {
   row: number;

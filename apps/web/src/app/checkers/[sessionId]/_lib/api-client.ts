@@ -27,6 +27,18 @@ export interface SessionView {
   movesWithoutProgress: number;
   lastMove: Move | null;
   expiresAt: string;
+  /**
+   * Phase 4.6.3: true when the backend has offered a draw because the
+   * no-progress threshold has been reached. The UI shows the
+   * Keep-Playing / Accept-Draw / Resign overlay when this is true.
+   */
+  drawOffered: boolean;
+  /**
+   * Phase 4.6.4: which opponent path this session is on. Client uses
+   * this for display (CPU art, lore copy). Backend is authoritative for
+   * difficulty and marks-required.
+   */
+  opponentType: 'sheriff' | 'unbaked';
 }
 
 export interface MoveResult {
@@ -35,7 +47,13 @@ export interface MoveResult {
   cpuReply: Move | null;
   markAwarded: boolean;
   levelPassed: boolean;
+  /**
+   * Phase 4.6.4: marks on the SESSION'S opponent path (not total across
+   * paths). UI shows "x / marksRequired" using these two fields together.
+   */
   marksTotal: number;
+  /** Phase 4.6.4: marks required to pass this opponent's path. */
+  marksRequired: number;
 }
 
 export interface ApiErrorBody {
@@ -145,4 +163,37 @@ export async function submitMove(
 
 export async function resignSession(opts: ClientOpts): Promise<SessionView> {
   return call<SessionView>(opts, '/resign', { method: 'POST' });
+}
+
+/**
+ * Phase 4.6.4: commit opponent choice and flip session from pending to
+ * active. Called when the player taps "Open the Comic". Backend rejects
+ * with 409 if the session is no longer pending (opponent is immutable
+ * once active).
+ */
+export async function commitSession(
+  opts: ClientOpts,
+  opponentType: 'sheriff' | 'unbaked',
+): Promise<SessionView> {
+  return call<SessionView>(opts, '/commit', {
+    method: 'POST',
+    body: JSON.stringify({ opponentType }),
+  });
+}
+
+/**
+ * Phase 4.6.3: player accepts a backend-offered draw. The session must
+ * currently have `drawOffered: true`. On success, the returned view has
+ * `status: 'draw'` and the game ends. No mark is awarded.
+ */
+export async function acceptDraw(opts: ClientOpts): Promise<SessionView> {
+  return call<SessionView>(opts, '/accept-draw', { method: 'POST' });
+}
+
+/**
+ * Phase 4.6.3: player declines a backend-offered draw and keeps playing.
+ * On success, `drawOffered` is false and the no-progress count resets to 0.
+ */
+export async function declineDraw(opts: ClientOpts): Promise<SessionView> {
+  return call<SessionView>(opts, '/decline-draw', { method: 'POST' });
 }

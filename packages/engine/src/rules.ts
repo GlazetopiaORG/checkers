@@ -3,9 +3,9 @@
  * Consumers should use moves.ts (legalMoves / applyMove) instead.
  */
 
-import { cloneBoard, isInBounds } from './board.js';
-import type { GameConfig } from './config.js';
-import type { Board, Cell, Move, Piece, Position, Side } from './types.js';
+import { cloneBoard, isInBounds } from './board';
+import type { GameConfig } from './config';
+import type { Board, Cell, Move, Piece, Position, Side } from './types';
 
 /** All four diagonal direction vectors as [dRow, dCol]. */
 const ALL_DIRECTIONS: ReadonlyArray<readonly [number, number]> = [

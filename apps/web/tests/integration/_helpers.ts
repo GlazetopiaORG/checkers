@@ -4,7 +4,7 @@
 
 import { createHmac } from 'node:crypto';
 
-import { getSupabase } from '../../src/lib/supabase.js';
+import { getSupabase } from '../../src/lib/supabase';
 
 /** Wipes test data tables. Safe because local Supabase is ephemeral. */
 export async function wipeDatabase(): Promise<void> {

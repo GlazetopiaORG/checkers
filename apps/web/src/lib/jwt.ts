@@ -16,7 +16,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 
-import { getEnv } from './env.js';
+import { getEnv } from './env';
 
 export interface SessionTokenPayload {
   /** The session this token grants access to. */
