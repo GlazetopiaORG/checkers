@@ -2,15 +2,16 @@ import type { Metadata, Viewport } from 'next';
 import '@/styles/checkers.css';
 import '@/styles/board-themes.css';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Glazetopia Checkers',
-  description: 'Beat the Unbaked. Three marks pass the level.',
+  description: 'Launch a Glazetopia Checkers duel from Discord.',
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  // Lets the board breathe inside Discord's iframe on mobile.
   maximumScale: 1,
   userScalable: false,
   themeColor: '#1a1410',
