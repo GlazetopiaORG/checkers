@@ -123,11 +123,11 @@ describe('getUserMarks', () => {
       jsonResponse(200, {
         discordId: '123456789012345678',
         marks: 3,
-        required: 3,
+        required: 4,
         levelPassed: false,
         paths: {
-          sheriff: { marks: 2, required: 5, passed: false },
-          unbaked: { marks: 1, required: 3, passed: false },
+          sheriff: { marks: 2, required: 4, passed: false },
+          unbaked: { marks: 1, required: 2, passed: false },
         },
       }),
     );
@@ -143,12 +143,12 @@ describe('getUserMarks', () => {
     // Empty body signature should be the HMAC of "".
     expect(headers['x-checkers-signature']).toBe(_internals.sign(''));
 
-    // Phase 4.6.4.1: per-path data is now required and accessible.
+    // Phase 4.6.4.1 + Phase 5.0.4: per-path data with tuned thresholds.
     expect(result.paths.sheriff.marks).toBe(2);
-    expect(result.paths.sheriff.required).toBe(5);
+    expect(result.paths.sheriff.required).toBe(4);
     expect(result.paths.sheriff.passed).toBe(false);
     expect(result.paths.unbaked.marks).toBe(1);
-    expect(result.paths.unbaked.required).toBe(3);
+    expect(result.paths.unbaked.required).toBe(2);
     expect(result.paths.unbaked.passed).toBe(false);
   });
 

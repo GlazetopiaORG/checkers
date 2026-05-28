@@ -2,7 +2,7 @@
  * Phase 5 HUD: verify the in-game header shows opponent-aware progress.
  *
  * This is the bug the player reported: starting Sheriff's Trial used to
- * show "0 / 3" because the HUD seeded marksRequired from the env-derived
+ * show the wrong threshold because the HUD seeded marksRequired from the env-derived
  * fallback. After Phase 5, the HUD derives from opponent.
  *
  * We test the OPPONENT_DISPLAY constants and the registry contract.
@@ -44,12 +44,12 @@ describe('client opponent display registry (HUD source-of-truth pre-server)', ()
     );
   });
 
-  it('sheriff path requires 5 wins (the bug fix)', () => {
-    expect(OPPONENT_DISPLAY.sheriff.marksRequired).toBe(5);
+  it('sheriff path requires 4 wins', () => {
+    expect(OPPONENT_DISPLAY.sheriff.marksRequired).toBe(4);
   });
 
-  it('unbaked path requires 3 wins', () => {
-    expect(OPPONENT_DISPLAY.unbaked.marksRequired).toBe(3);
+  it('unbaked path requires 2 wins', () => {
+    expect(OPPONENT_DISPLAY.unbaked.marksRequired).toBe(2);
   });
 
   it('every opponent has a pathName for the HUD label', () => {

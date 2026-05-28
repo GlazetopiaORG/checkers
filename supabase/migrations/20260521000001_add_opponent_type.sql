@@ -2,8 +2,8 @@
 --
 -- Adds opponent_type to checkers_sessions and checkers_marks so the
 -- backend can track two independent progress paths per user:
---   - Sheriff Buttercream: 5 wins to pass (easier AI)
---   - The Unbaked:         3 wins to pass (current AI)
+--   - Sheriff Buttercream: 4 wins to pass (easier AI; tuned Phase 5.0.4)
+--   - The Unbaked:         2 wins to pass (harder AI; tuned Phase 5.0.4)
 --
 -- Backend-authority guardrails:
 --   - opponent_type on a session may only be set while status='pending'.

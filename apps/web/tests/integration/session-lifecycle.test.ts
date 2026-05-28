@@ -135,8 +135,8 @@ describe('session lifecycle', () => {
     expect(result.sessionView.turn).toBe('player');
     expect(result.sessionView.moveCount).toBe(2);
     expect(result.cpuReply).not.toBeNull();
-    // Phase 4.6.4: marksRequired is per-opponent (3 for unbaked).
-    expect(result.marksRequired).toBe(3);
+    // Phase 5.0.4: marksRequired is per-opponent (2 for unbaked).
+    expect(result.marksRequired).toBe(2);
   });
 
   it.skipIf(!dbAvailable)('resigns a session', async () => {

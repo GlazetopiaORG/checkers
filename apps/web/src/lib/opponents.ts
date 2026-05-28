@@ -2,8 +2,8 @@
  * Opponent registry — SERVER-SIDE source of truth.
  *
  * Two opponent paths:
- *   - 'sheriff' : Sheriff Buttercream. Easier (lower AI depth). 5 wins to pass.
- *   - 'unbaked' : The Unbaked. Harder (default AI depth). 3 wins to pass.
+ *   - 'sheriff' : Sheriff Buttercream. Easier (lower AI depth). 4 wins to pass.
+ *   - 'unbaked' : The Unbaked. Harder (default AI depth). 2 wins to pass.
  *
  * The backend uses this registry for every authoritative decision:
  *   - which AI depth to feed `cpuMove`
@@ -37,13 +37,13 @@ export const OPPONENTS: Record<OpponentType, OpponentPreset> = {
     id: 'sheriff',
     displayName: 'Sheriff Buttercream',
     aiDepth: 2,
-    marksRequired: 5,
+    marksRequired: 4,
   },
   unbaked: {
     id: 'unbaked',
     displayName: 'The Unbaked',
     aiDepth: 4,
-    marksRequired: 3,
+    marksRequired: 2,
   },
 };
 

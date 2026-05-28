@@ -59,8 +59,8 @@ export function makeCheckersHandler(cooldown: CooldownTracker) {
       //    backend fails we still want to show the session link, so we
       //    fall back to all-zero paths.
       const ZERO_PATHS = {
-        sheriff: { marks: 0, required: 5, passed: false },
-        unbaked: { marks: 0, required: 3, passed: false },
+        sheriff: { marks: 0, required: 4, passed: false },
+        unbaked: { marks: 0, required: 2, passed: false },
       };
       let paths = ZERO_PATHS;
       try {
