@@ -28,6 +28,18 @@ import type { BoardTheme } from '../_lib/themes';
 import { CharacterPicker } from './CharacterPicker';
 import { OpponentPicker } from './OpponentPicker';
 
+// Phase 5.0.9: module-load canary for the ComicCover (the actual button
+// that calls commit). If the 409 happens but this log doesn't appear,
+// either ComicCover never mounts (impossible — the button has to render
+// for the click to fire) or the deployed bundle predates 5.0.9.
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line no-console
+  console.log(
+    '%c[ComicCover] LIVE COMIC COVER MODULE LOADED — phase5.0.9',
+    'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;',
+  );
+}
+
 export interface ComicCoverProps {
   theme: BoardTheme;
   /** Currently chosen character — drives the player side of the face-off. */
@@ -114,7 +126,23 @@ export function ComicCover({
       <button
         type="button"
         className="cover-open-btn"
-        onClick={onOpen}
+        onClick={(e) => {
+          // Phase 5.0.9: guaranteed click log. If the user taps this
+          // button and this log does NOT appear, the rendered button
+          // is from a different component (or the build doesn't have
+          // 5.0.9). If the log appears but the next [checkers/cover-open]
+          // doesn't, the parent's onOpen handler is the wrong function.
+          if (typeof window !== 'undefined') {
+            // eslint-disable-next-line no-console
+            console.log('[ComicCover] BUTTON CLICKED', {
+              busy,
+              opponent: opponent.id,
+              character: character.id,
+              onOpenIsFn: typeof onOpen === 'function',
+            });
+          }
+          onOpen();
+        }}
         disabled={busy}
         aria-label={`Open the comic to face ${opponent.displayName} as ${character.displayName}`}
       >

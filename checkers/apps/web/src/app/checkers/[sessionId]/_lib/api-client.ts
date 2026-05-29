@@ -18,7 +18,7 @@ import type {
 // patched api-client is in the bundle.
 if (typeof window !== 'undefined') {
   // eslint-disable-next-line no-console
-  console.log('%c[api-client] LIVE API CLIENT LOADED — phase5.0.8', 'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;');
+  console.log('%c[api-client] LIVE API CLIENT LOADED — phase5.0.9', 'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;');
 }
 
 // -----------------------------------------------------------------------------

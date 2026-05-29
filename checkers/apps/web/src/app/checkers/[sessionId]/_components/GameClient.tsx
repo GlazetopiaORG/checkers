@@ -17,19 +17,37 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // =============================================================================
-// PHASE 5.0.8 BUILD STAMP & CANARY
+// PHASE 5.0.10 BUILD STAMP & SELF-VERIFICATION
 // =============================================================================
-// If you see "LIVE GAMECLIENT LOADED" in the browser console, this file is
-// the one rendering the page. If you DON'T see it, the deployed bundle is
-// from a different commit and the Phase 5.0.6/5.0.7/5.0.8 patches are not live.
+// The deployed Vercel bundle has been shipping older code than these zips
+// for several phases now. To prove unambiguously which version is running,
+// this file carries a signature line that's grep-able both in source and
+// in the minified bundle (the string survives minification).
 //
-// The build stamp helps verify the exact build version on the deployed site.
-// Update this on each Phase change so it shows in console.
-const BUILD_STAMP = 'phase5.0.8 — commit-flow idempotency + canary';
+// If you see "GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10" in the live page's
+// JS bundle, the patches are deployed. If not, the deployed bundle is
+// older.
+//
+// To inspect the live bundle:
+//   1. Open the live game page
+//   2. View Source / DevTools → Sources → find the relevant chunk
+//   3. Search for "GLAZETOPIA_GAMECLIENT_SIGNATURE"
+// The string will be inlined verbatim by Next's bundler.
+const GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10 =
+  'phase5.0.10 — auto-lift uses status!==pending; commit gated by render';
+
+const BUILD_STAMP = `phase5.0.10 — ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10}`;
 
 if (typeof window !== 'undefined') {
   // eslint-disable-next-line no-console
-  console.log(`%c[GameClient] LIVE GAMECLIENT LOADED — ${BUILD_STAMP}`, 'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;');
+  console.log(
+    `%c[GameClient] LIVE GAMECLIENT LOADED — ${BUILD_STAMP}`,
+    'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;',
+  );
+  // eslint-disable-next-line no-console
+  console.log(
+    `[GameClient] SIGNATURE: ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10}`,
+  );
 }
 // =============================================================================
 
