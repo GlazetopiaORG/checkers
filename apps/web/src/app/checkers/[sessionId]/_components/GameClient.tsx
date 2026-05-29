@@ -14,7 +14,43 @@
 
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+// =============================================================================
+// PHASE 5.0.10 BUILD STAMP & SELF-VERIFICATION
+// =============================================================================
+// The deployed Vercel bundle has been shipping older code than these zips
+// for several phases now. To prove unambiguously which version is running,
+// this file carries a signature line that's grep-able both in source and
+// in the minified bundle (the string survives minification).
+//
+// If you see "GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11" in the live page's
+// JS bundle, the patches are deployed. If not, the deployed bundle is
+// older.
+//
+// To inspect the live bundle:
+//   1. Open the live game page
+//   2. View Source / DevTools → Sources → find the relevant chunk
+//   3. Search for "GLAZETOPIA_GAMECLIENT_SIGNATURE"
+// The string will be inlined verbatim by Next's bundler.
+const GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11 =
+  'phase5.0.11 — view-authoritative interactive flag + visible debug panel';
+
+const BUILD_STAMP = `phase5.0.11 — ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11}`;
+
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line no-console
+  console.log(
+    `%c[GameClient] LIVE GAMECLIENT LOADED — ${BUILD_STAMP}`,
+    'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;',
+  );
+  // eslint-disable-next-line no-console
+  console.log(
+    `[GameClient] SIGNATURE: ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11}`,
+  );
+}
+// =============================================================================
+
 
 import type { Move, Position } from '@glazetopia/engine';
 
@@ -170,6 +206,13 @@ export function GameClient({
   const [committing, setCommitting] = useState<boolean>(false);
   const [commitError, setCommitError] = useState<string | null>(null);
 
+  // Phase 5.0.7: synchronous lock against double-clicks. React state
+  // (`committing`) is async — between two clicks fired in the same tick,
+  // `committing` may still read false on the second click. A ref flips
+  // immediately on first click, blocking any later invocation in the
+  // same render cycle.
+  const commitInFlightRef = useRef(false);
+
   // Hydrate the character from localStorage on the client AFTER mount,
   // so we don't get an SSR/CSR mismatch. Empty deps — runs once.
   useEffect(() => {
@@ -192,65 +235,205 @@ export function GameClient({
   // Phase 4.6.4: cover-open commits the opponent (and persists the
   // character locally). Only after the backend confirms (status → active)
   // does the cover lift.
+  //
+  // Phase 5.0.7: full idempotent flow:
+  //   1. Synchronous ref lock — second click in same tick is a no-op
+  //   2. Pre-commit refetch — verify status is STILL pending RIGHT BEFORE POST
+  //      (catches the case where session was committed between page load
+  //      and click — e.g. another tab, slow network, or any race)
+  //   3. If pre-commit refetch shows non-pending → treat as success (no POST)
+  //   4. If commit returns 409 → treat as success (refetch, lift, never
+  //      leave phase stuck at 'pending-commit')
+  //   5. Ref released in finally so the button can be retried on error
   const handleCoverOpen = useCallback(async () => {
+    // -------- SYNCHRONOUS LOCK (runs before any await) --------
+    // eslint-disable-next-line no-console
+    console.info('[checkers/cover-open] invoked', {
+      hasView: !!view,
+      viewStatus: view?.status,
+      viewTurn: view?.turn,
+      phase,
+      coverLifted,
+      committing,
+      commitInFlight: commitInFlightRef.current,
+      opponent,
+    });
+
+    if (commitInFlightRef.current) {
+      // eslint-disable-next-line no-console
+      console.warn('[checkers/cover-open] BLOCKED: commit already in flight (ref lock)');
+      return;
+    }
+    commitInFlightRef.current = true;
+    // eslint-disable-next-line no-console
+    console.info('[checkers/cover-open] commit lock acquired');
+
     // Always persist the character regardless of commit success.
     saveCharacter(character);
 
-    if (!view) {
-      // Shouldn't happen — cover only shows when we have a view — but
-      // guard anyway.
-      setCommitError('Session not loaded yet.');
-      return;
-    }
-
-    // If the session is already active (e.g. mid-game refresh), there's
-    // nothing to commit. Just lift the cover.
-    if (view.status !== 'pending') {
-      setCoverLifted(true);
-      return;
-    }
-
-    setCommitting(true);
-    setCommitError(null);
     try {
-      const v = await commitSession(apiOpts, opponent);
-      setView(v);
-      setPhase(mapStatusToPhase(v.status, v.turn));
-      setCoverLifted(true);
-    } catch (e) {
-      if (e instanceof CheckersApiError) {
-        if (e.code === 'CONFLICT') {
-          // Another tab already committed, or we raced. Refetch and lift.
+      if (!view) {
+        // eslint-disable-next-line no-console
+        console.warn('[checkers/cover-open] SKIPPED: view not loaded');
+        setCommitError('Session not loaded yet.');
+        return;
+      }
+
+      // -------- EARLY GATE on local view --------
+      // If the local view already shows non-pending, lift cover and exit.
+      // No network call, no risk of 409.
+      if (view.status !== 'pending') {
+        // eslint-disable-next-line no-console
+        console.info(
+          `[checkers/cover-open] SKIPPED commit: local view.status=${view.status} (already committed). ` +
+            'Lifting cover and reconciling phase from view.',
+        );
+        setPhase(mapStatusToPhase(view.status, view.turn));
+        setOpponent(coerceOpponentId(view.opponentType));
+        setCoverLifted(true);
+        setCommitError(null);
+        return;
+      }
+
+      // -------- PRE-COMMIT REFETCH --------
+      // Verify the session is STILL pending right before we POST. This
+      // catches the production race where the user holds the cover open
+      // long enough for another tab / a retry / a slow response cycle
+      // to flip the session to active. Without this, the stale local
+      // view sends us straight into the 409.
+      setCommitting(true);
+      setCommitError(null);
+
+      // eslint-disable-next-line no-console
+      console.info('[checkers/cover-open] pre-commit refetch in progress…');
+      let latest = view;
+      try {
+        latest = await fetchSession(apiOpts);
+        // eslint-disable-next-line no-console
+        console.info('[checkers/cover-open] latest status before commit', {
+          status: latest.status,
+          turn: latest.turn,
+          opponentType: latest.opponentType,
+        });
+        setView(latest);
+      } catch (refetchErr) {
+        // Refetch failed — proceed with the local view we have. If it's
+        // already non-pending the next branch handles it; otherwise the
+        // commit POST will hit the 409 branch which also handles it.
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[checkers/cover-open] pre-commit refetch failed, falling back to local view:',
+          refetchErr,
+        );
+      }
+
+      // After refetch: if status flipped to non-pending, skip commit.
+      if (latest.status !== 'pending') {
+        // eslint-disable-next-line no-console
+        console.info(
+          `[checkers/cover-open] SKIPPED commit after refetch: status=${latest.status}. ` +
+            'Lifting cover (no POST sent).',
+        );
+        setPhase(mapStatusToPhase(latest.status, latest.turn));
+        setOpponent(coerceOpponentId(latest.opponentType));
+        setCoverLifted(true);
+        setCommitError(null);
+        return;
+      }
+
+      // -------- COMMIT POST --------
+      // eslint-disable-next-line no-console
+      console.info('[checkers/cover-open] CALLING commitSession (status=pending)', {
+        opponent,
+      });
+      try {
+        const v = await commitSession(apiOpts, opponent);
+        // eslint-disable-next-line no-console
+        console.info('[checkers/cover-open] commitSession succeeded', {
+          newStatus: v.status,
+          newTurn: v.turn,
+        });
+        setView(v);
+        setPhase(mapStatusToPhase(v.status, v.turn));
+        setOpponent(coerceOpponentId(v.opponentType));
+        setCoverLifted(true);
+      } catch (e) {
+        if (e instanceof CheckersApiError && e.code === 'CONFLICT') {
+          // 409: the session is already committed (race, retry, or any
+          // other reason). Per spec: treat as success. Refetch, sync,
+          // lift, and ENSURE phase is no longer 'pending-commit'.
+          // eslint-disable-next-line no-console
+          console.info('[checkers/cover-open] 409 treated as success');
           try {
             const v = await fetchSession(apiOpts);
+            // eslint-disable-next-line no-console
+            console.info('[checkers/cover-open] post-409 refetch', {
+              status: v.status,
+              turn: v.turn,
+            });
             setView(v);
             setPhase(mapStatusToPhase(v.status, v.turn));
+            setOpponent(coerceOpponentId(v.opponentType));
             setCoverLifted(true);
-            return;
+            setCommitError(null);
           } catch (e2) {
-            handleApiFailure(e2);
-            return;
+            // Refetch failed but server confirmed active. Force phase
+            // off 'pending-commit' using the locally-known opponent and
+            // assume player's turn (safe default; reconciliation effect
+            // and next user action will correct anything off).
+            // eslint-disable-next-line no-console
+            console.error(
+              '[checkers/cover-open] post-409 refetch failed; forcing phase=your-turn anyway:',
+              e2,
+            );
+            setPhase('your-turn');
+            setCoverLifted(true);
+            setCommitError(null);
           }
+          return;
         }
-        setCommitError(`${e.code}: ${e.message}`);
-      } else {
-        setCommitError(e instanceof Error ? e.message : 'Failed to open the comic');
+        if (e instanceof CheckersApiError) {
+          // eslint-disable-next-line no-console
+          console.error(`[checkers/cover-open] commit failed: ${e.code}: ${e.message}`);
+          setCommitError(`${e.code}: ${e.message}`);
+        } else {
+          // eslint-disable-next-line no-console
+          console.error('[checkers/cover-open] commit threw non-API error:', e);
+          setCommitError(e instanceof Error ? e.message : 'Failed to open the comic');
+        }
       }
     } finally {
       setCommitting(false);
+      // Release the lock so the user can retry on legitimate errors.
+      // Success paths have already lifted the cover (so the button no
+      // longer exists for pending-session render), making retry impossible
+      // by structural means.
+      commitInFlightRef.current = false;
+      // eslint-disable-next-line no-console
+      console.info('[checkers/cover-open] commit lock released');
     }
-    // handleApiFailure is stable; apiOpts is recreated per render but it's
-    // a thin {sessionId, token} object — fine.
+    // apiOpts is recreated per render but it's a thin {sessionId, token}
+    // object — fine. handleApiFailure is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [character, opponent, view, sessionId, token]);
+  }, [character, opponent, view, sessionId, token, phase, coverLifted, committing]);
 
   // --- Initial load ---------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        // eslint-disable-next-line no-console
+        console.info('[checkers/init] fetching session', { sessionId });
         const v = await fetchSession(apiOpts);
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.info('[checkers/init] session loaded', {
+          status: v.status,
+          turn: v.turn,
+          moveCount: v.moveCount,
+          hasLastMove: v.lastMove !== null,
+          opponentType: v.opponentType,
+        });
         setView(v);
         setPhase(mapStatusToPhase(v.status, v.turn));
         // Phase 4.6.4: if the session was already committed (i.e. user
@@ -258,21 +441,37 @@ export function GameClient({
         // the picker pre-selects and the CPU art is correct.
         setOpponent(coerceOpponentId(v.opponentType));
 
-        // Auto-skip the comic cover when:
-        //   1. URL contains #skip-intro (developer shortcut)
-        //   2. The game is already in progress (player refreshed mid-game)
-        //   3. The session has already ended somehow
-        // Note: a fresh pending session does NOT skip — the cover stays
-        // so the player can pick character + opponent.
+        // Phase 5.0.5/5.0.6: auto-lift cover for ANY non-pending session.
+        // The cover ONLY stays up for fresh `pending` sessions where the
+        // player still needs to pick character + opponent. This catches:
+        //   - refresh of an active session (with or without moves)
+        //   - refresh of a completed session
+        //   - URL hash dev-shortcut
+        //
+        // CRITICAL: the cover is the ONLY surface that can call commit().
+        // Lifting it on load + the render-time gate below means commit()
+        // is unreachable for any non-pending session.
         const hashSkip =
           typeof window !== 'undefined' && window.location.hash === '#skip-intro';
-        const inProgress = v.lastMove !== null || v.moveCount > 0;
-        const ended = v.status !== 'active' && v.status !== 'pending';
-        if (hashSkip || inProgress || ended) {
+        const shouldLift = hashSkip || v.status !== 'pending';
+        // eslint-disable-next-line no-console
+        console.info('[checkers/init] cover auto-lift decision', {
+          shouldLift,
+          hashSkip,
+          isPending: v.status === 'pending',
+          reason: hashSkip
+            ? 'dev hash skip'
+            : v.status !== 'pending'
+              ? `status=${v.status} (not pending)`
+              : 'staying up for character/opponent selection',
+        });
+        if (shouldLift) {
           setCoverLifted(true);
         }
       } catch (e) {
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.error('[checkers/init] fetchSession failed:', e);
         handleApiFailure(e);
       }
     })();
@@ -281,6 +480,53 @@ export function GameClient({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, token]);
+
+  // --- Cover-lift guarantee -------------------------------------------------
+  //
+  // Phase 5.0.6: if the session is not pending, coverLifted MUST be true
+  // so the board is interactive. This is a belt-and-braces effect on top
+  // of the initial-load auto-lift — in case anything ever sets
+  // coverLifted=false during an active session (e.g. a future refactor),
+  // this immediately corrects it.
+  useEffect(() => {
+    if (!view) return;
+    if (view.status !== 'pending' && !coverLifted) {
+      // eslint-disable-next-line no-console
+      console.info(
+        `[checkers/lift-guarantee] forcing coverLifted=true for status=${view.status}`,
+      );
+      setCoverLifted(true);
+    }
+  }, [view, coverLifted]);
+
+  // --- Phase reconciliation -------------------------------------------------
+  //
+  // Defensive guard: if view.status no longer matches the current phase
+  // (e.g. status went pending → active via a commit, or active → won
+  // via a move-result race), re-derive phase from view.
+  //
+  // Without this, `interactive` could stay false in edge cases where
+  // phase is stuck at 'pending-commit' but view.status is 'active'.
+  //
+  // Transient phases (sending-move, unbaked-thinking, error) are
+  // intentionally allowed to differ from view.status — they're local
+  // UI states without a server counterpart.
+  useEffect(() => {
+    if (!view) return;
+    const transientPhase =
+      phase === 'sending-move' ||
+      phase === 'unbaked-thinking' ||
+      phase === 'error';
+    if (transientPhase) return;
+    const expected = mapStatusToPhase(view.status, view.turn);
+    if (expected !== phase) {
+      // eslint-disable-next-line no-console
+      console.info(
+        `[checkers/reconcile] phase mismatch ${phase} → ${expected} (view.status=${view.status} turn=${view.turn})`,
+      );
+      setPhase(expected);
+    }
+  }, [view, phase]);
 
   // --- Helpers --------------------------------------------------------------
 
@@ -563,90 +809,205 @@ export function GameClient({
     );
   }
 
+  // Phase 5.0.11: VIEW-AUTHORITATIVE derivations.
+  //
+  // Previously, `interactive`, `isOver`, and the status-bar state all
+  // depended on `phase`. That worked when phase always tracked view.status.
+  // But if phase ever lagged (e.g. stuck at 'pending-commit' after a 409
+  // recovery), interactive would be false even though the session was
+  // active and ready to play.
+  //
+  // The fix: derive these from `view` directly. `view` is the
+  // server-authoritative state. `phase` remains useful for transient
+  // UI states (sending-move, unbaked-thinking) but no longer gates
+  // whether the player can click pieces on an active session.
+  //
+  // Spec compliance (this turn):
+  //   - view.status === 'active' && view.turn === 'player' → interactive
+  //   - view.status === 'active' && view.turn === 'cpu'    → not interactive (CPU thinking)
+  //   - view.status !== 'pending'                          → coverLifted is forced true
+  //   - Status bar shows the view-derived state, never 'loading' for active sessions
+
+  // Sending-move and unbaked-thinking are transient — preserve them so
+  // the UI animates correctly during a turn.
+  const isTransientPhase =
+    phase === 'sending-move' || phase === 'unbaked-thinking';
+
+  // The view-derived "what should the UI be showing right now" value.
+  // Falls back to phase only for transient UI animations.
+  const effectivePhase: Phase = isTransientPhase
+    ? phase
+    : mapStatusToPhase(view.status, view.turn);
+
   const interactive =
-    phase === 'your-turn' && coverLifted && !view.drawOffered;
+    view.status === 'active' &&
+    view.turn === 'player' &&
+    coverLifted &&
+    !view.drawOffered &&
+    !isTransientPhase; // don't accept clicks mid-animation
+
   const isOver =
-    phase === 'won' ||
-    phase === 'lost' ||
-    phase === 'draw' ||
-    phase === 'abandoned' ||
-    phase === 'expired';
+    view.status === 'won' ||
+    view.status === 'lost' ||
+    view.status === 'draw' ||
+    view.status === 'abandoned' ||
+    view.status === 'expired';
 
   // Apply theme class to the page shell so theme tokens cascade to every
   // child. `theme-page-bg` additionally swaps the page background for
   // themes that define one.
   const shellClass = `game-shell ${theme.cssClass} theme-page-bg`;
 
+  // Phase 5.0.6: STRICT render-time gate. ComicCover and PageLift are
+  // ONLY mounted when the session is pending — i.e. when the player still
+  // needs to choose character + opponent and commit. For every other
+  // status, the cover doesn't exist in the DOM, so its onClick handler
+  // (which calls handleCoverOpen → potentially commit) is unreachable.
+  //
+  // This is the structural fix for the live 409 bug: regardless of any
+  // state-management edge case, an active session has no path to
+  // commit() because the button doesn't exist.
+  const needsIntro = view.status === 'pending';
+
+  // Stage content used in both branches (kept identical for layout parity).
+  const stageContent = (
+    <>
+      <header className="game-stage__header">
+        <h1 className="game-title">Glazetopia Checkers</h1>
+        <MarksDisplay
+          total={marksTotal}
+          required={effectiveMarksRequired}
+          justEarned={justEarned}
+          opponent={effectiveOpponent}
+        />
+      </header>
+
+      <GameStatusBar
+        state={narrowPhaseForStatusBar(effectivePhase)}
+        onResign={onResign}
+        canResign={!isOver && coverLifted}
+      />
+
+      <div className="game-stage__play">
+        <div className="game-stage__board">
+          <Board
+            board={view.board}
+            selected={selected}
+            legalDestinations={legalMoves}
+            lastMove={view.lastMove ?? null}
+            capturedPositions={anim.capturedPositions}
+            promotedPosition={anim.promotedPosition}
+            justLandedPosition={anim.justLandedPosition}
+            interactive={interactive}
+            playerCharacter={character}
+            opponent={coerceOpponentId(view.opponentType)}
+            onSquareClick={onSquareClick}
+          />
+        </div>
+        <div className="game-stage__panel">
+          <CrumbTrail
+            sessionId={sessionId}
+            theme={theme}
+            phase={narrowPhaseForCrumb(phase)}
+            marksTotal={marksTotal}
+            marksRequired={effectiveMarksRequired}
+            moveCount={view.moveCount}
+            opponent={effectiveOpponent}
+            capturesAvailable={
+              phase === 'your-turn' && anyPlayerCaptureAvailable(view.board)
+            }
+            visible={coverLifted}
+          />
+        </div>
+      </div>
+    </>
+  );
+
+  // One-time debug log of the final render decision. Visible in the
+  // browser console so we can verify on the live deploy.
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.debug('[checkers/render]', {
+      viewStatus: view.status,
+      viewTurn: view.turn,
+      phase,
+      coverLifted,
+      interactive,
+      drawOffered: view.drawOffered,
+      needsIntro,
+      mountsCover: needsIntro,
+    });
+  }
+
   return (
     <main className={shellClass}>
+      {/* Phase 5.0.11: visible debug panel. Renders directly on the page
+          so we can verify state without console access. Top-right corner,
+          fixed position. Remove this block once the live bug is resolved. */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 8,
+          right: 8,
+          zIndex: 9999,
+          background: 'rgba(0,0,0,0.85)',
+          color: '#5fe46a',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+          fontSize: 11,
+          padding: '8px 10px',
+          borderRadius: 6,
+          border: '1px solid #5fe46a',
+          lineHeight: 1.5,
+          maxWidth: 320,
+          pointerEvents: 'none',
+        }}
+        aria-hidden="true"
+      >
+        <div style={{ fontWeight: 700, color: '#fff', marginBottom: 4 }}>
+          DEBUG · phase5.0.11
+        </div>
+        <div>phase: <span style={{ color: '#fff' }}>{phase}</span></div>
+        <div>effectivePhase: <span style={{ color: '#fff' }}>{effectivePhase}</span></div>
+        <div>view.status: <span style={{ color: '#fff' }}>{view.status}</span></div>
+        <div>view.turn: <span style={{ color: '#fff' }}>{view.turn}</span></div>
+        <div>coverLifted: <span style={{ color: coverLifted ? '#fff' : '#ff5a5a' }}>{String(coverLifted)}</span></div>
+        <div>needsIntro: <span style={{ color: needsIntro ? '#ff5a5a' : '#fff' }}>{String(needsIntro)}</span></div>
+        <div>interactive: <span style={{ color: interactive ? '#fff' : '#ff5a5a', fontWeight: 700 }}>{String(interactive)}</span></div>
+        <div>drawOffered: <span style={{ color: '#fff' }}>{String(view.drawOffered)}</span></div>
+        <div>moveCount: <span style={{ color: '#fff' }}>{view.moveCount}</span></div>
+        <div>committing: <span style={{ color: '#fff' }}>{String(committing)}</span></div>
+      </div>
+
       <section className="game-stage" aria-label="Glazetopia Checkers stage">
-        <PageLift
-          lifted={coverLifted}
-          cover={
-            <ComicCover
-              theme={theme}
-              selectedCharacter={character}
-              selectedOpponent={opponent}
-              onCharacterChange={handleCharacterChange}
-              onOpponentChange={handleOpponentChange}
-              onOpen={handleCoverOpen}
-              busy={committing}
-              errorMessage={commitError}
-            />
-          }
-        >
-          {/* Stage content — header + status sit above the play row, all
-              inside the same unified frame. The PageLift overlay sits on
-              top of THIS whole subtree during intro. */}
-          <header className="game-stage__header">
-            <h1 className="game-title">Glazetopia Checkers</h1>
-            <MarksDisplay
-              total={marksTotal}
-              required={effectiveMarksRequired}
-              justEarned={justEarned}
-              opponent={effectiveOpponent}
-            />
-          </header>
-
-          <GameStatusBar
-            state={narrowPhaseForStatusBar(phase)}
-            onResign={onResign}
-            canResign={!isOver && coverLifted}
-          />
-
-          <div className="game-stage__play">
-            <div className="game-stage__board">
-              <Board
-                board={view.board}
-                selected={selected}
-                legalDestinations={legalMoves}
-                lastMove={view.lastMove ?? null}
-                capturedPositions={anim.capturedPositions}
-                promotedPosition={anim.promotedPosition}
-                justLandedPosition={anim.justLandedPosition}
-                interactive={interactive}
-                playerCharacter={character}
-                opponent={coerceOpponentId(view.opponentType)}
-                onSquareClick={onSquareClick}
-              />
-            </div>
-            <div className="game-stage__panel">
-              <CrumbTrail
-                sessionId={sessionId}
+        {needsIntro ? (
+          // Pending session: render the cover + PageLift wrapper so the
+          // player can pick character/opponent and tap to commit.
+          <PageLift
+            lifted={coverLifted}
+            cover={
+              <ComicCover
                 theme={theme}
-                phase={narrowPhaseForCrumb(phase)}
-                marksTotal={marksTotal}
-                marksRequired={effectiveMarksRequired}
-                moveCount={view.moveCount}
-                opponent={effectiveOpponent}
-                capturesAvailable={
-                  phase === 'your-turn' && anyPlayerCaptureAvailable(view.board)
-                }
-                visible={coverLifted}
+                selectedCharacter={character}
+                selectedOpponent={opponent}
+                onCharacterChange={handleCharacterChange}
+                onOpponentChange={handleOpponentChange}
+                onOpen={handleCoverOpen}
+                busy={committing}
+                errorMessage={commitError}
               />
-            </div>
-          </div>
-        </PageLift>
+            }
+          >
+            {/* Stage content — header + status sit above the play row, all
+                inside the same unified frame. The PageLift overlay sits on
+                top of THIS whole subtree during intro. */}
+            {stageContent}
+          </PageLift>
+        ) : (
+          // Any non-pending session: render the stage directly. No cover,
+          // no PageLift, no commit handler in scope. The board is the
+          // top-level interactive surface from the first paint.
+          <div className="game-stage__direct">{stageContent}</div>
+        )}
       </section>
 
       {/* Phase 4.6.3: draw offered. Shown before the ResultOverlay check
@@ -738,8 +1099,13 @@ function narrowPhaseForCrumb(
 
 /**
  * Phase 4.6.4: narrow Phase to the status-bar's supported values.
- * pending-commit shouldn't render in the status bar (the bar is hidden
- * during the cover), but we map it to 'loading' defensively.
+ *
+ * Phase 5.0.11: pending-commit no longer falls through to 'loading'.
+ * If a render reaches this function with phase='pending-commit', the
+ * cover render-gate has the cover up anyway (covering the status bar),
+ * so the bar's state is irrelevant — but mapping to 'your-turn' here
+ * means even an edge-case render won't display "Loading..." while
+ * the user can see the board.
  */
 function narrowPhaseForStatusBar(p: Phase): 'your-turn' | 'sending-move' | 'unbaked-thinking' | 'won' | 'lost' | 'draw' | 'abandoned' | 'expired' | 'loading' {
   switch (p) {
@@ -754,6 +1120,10 @@ function narrowPhaseForStatusBar(p: Phase): 'your-turn' | 'sending-move' | 'unba
     case 'loading':
       return p;
     case 'pending-commit':
+      // Safety: if this ever renders, the cover is up — the bar isn't
+      // visible. Returning 'your-turn' prevents a flash of "Loading…"
+      // in any edge case where the cover lifts a tick before phase syncs.
+      return 'your-turn';
     case 'error':
     default:
       return 'loading';

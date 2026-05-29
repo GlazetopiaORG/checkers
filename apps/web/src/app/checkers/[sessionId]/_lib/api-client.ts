@@ -14,6 +14,13 @@ import type {
   Side,
 } from '@glazetopia/engine';
 
+// Phase 5.0.8: module-load canary. If you see this in the console, the
+// patched api-client is in the bundle.
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line no-console
+  console.log('%c[api-client] LIVE API CLIENT LOADED — phase5.0.9', 'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;');
+}
+
 // -----------------------------------------------------------------------------
 // Response shapes (mirror the backend exports — kept in sync by hand for now)
 // -----------------------------------------------------------------------------
@@ -98,6 +105,16 @@ async function call<T>(
   init: RequestInit = {},
 ): Promise<T> {
   const url = `/api/checkers/session/${encodeURIComponent(opts.sessionId)}${path}`;
+
+  // Phase 5.0.8: log every API call from this client so we can prove which
+  // file initiated each request. If a /commit POST shows up in the network
+  // tab without "[api-client/call] POST /commit" in the console, the call
+  // originates from outside our api-client.
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.log(`[api-client/call] ${init.method || 'GET'} ${url}`);
+  }
+
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${opts.token}`);
   if (init.body && !headers.has('Content-Type')) {
@@ -113,6 +130,11 @@ async function call<T>(
       networkErr instanceof Error ? networkErr.message : 'Network error',
       0,
     );
+  }
+
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.log(`[api-client/call] ← ${res.status} ${init.method || 'GET'} ${url}`);
   }
 
   if (!res.ok) {
@@ -170,11 +192,25 @@ export async function resignSession(opts: ClientOpts): Promise<SessionView> {
  * active. Called when the player taps "Open the Comic". Backend rejects
  * with 409 if the session is no longer pending (opponent is immutable
  * once active).
+ *
+ * Phase 5.0.8: logs the call site stack trace so we can identify any
+ * unexpected caller. If the 409 ever appears without "[api-client/commitSession]
+ * CALLED" in the console, the request is coming from outside our code
+ * (browser extension, page lifecycle event, etc).
  */
 export async function commitSession(
   opts: ClientOpts,
   opponentType: 'sheriff' | 'unbaked',
 ): Promise<SessionView> {
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.log('[api-client/commitSession] CALLED', {
+      sessionId: opts.sessionId,
+      opponentType,
+      // Capture the call stack so we can see WHO called this.
+      stack: new Error('commitSession call stack').stack,
+    });
+  }
   return call<SessionView>(opts, '/commit', {
     method: 'POST',
     body: JSON.stringify({ opponentType }),

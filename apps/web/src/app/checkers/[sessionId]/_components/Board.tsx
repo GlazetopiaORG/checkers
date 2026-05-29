@@ -18,6 +18,18 @@ import { PieceSkin } from './PieceSkin';
 import type { CharacterId } from '../_lib/characters';
 import type { OpponentId } from '../_lib/opponents';
 
+// Phase 5.0.9: module-load canary in the actual visible board component.
+// If the deployed bundle ever renders the board without this log firing,
+// either the bundle is older than 5.0.9 or another component is rendering
+// the visible board.
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line no-console
+  console.log(
+    '%c[Board] LIVE BOARD MODULE LOADED — phase5.0.9',
+    'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;',
+  );
+}
+
 export interface BoardProps {
   board: EngineBoard;
   selected: Position | null;
@@ -52,6 +64,20 @@ export function Board(props: BoardProps): JSX.Element {
     opponent,
     onSquareClick,
   } = props;
+
+  // Phase 5.0.9: per-render canary showing interactive state. If pieces
+  // aren't clickable, this log tells you immediately whether the issue is
+  // (a) Board getting interactive=false from the parent, or
+  // (b) the parent never mounting this Board component.
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.debug('[Board/render]', {
+      interactive,
+      hasOnSquareClick: typeof onSquareClick === 'function',
+      legalDestinationsCount: legalDestinations.length,
+      selected,
+    });
+  }
 
   const destByKey = new Map<string, { captures: boolean }>();
   for (const m of legalDestinations) {

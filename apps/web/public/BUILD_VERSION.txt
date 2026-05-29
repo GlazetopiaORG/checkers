@@ -1,18 +1,13 @@
 glazetopia-checkers
-phase: 5.0.10
-signature: GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10
+phase: 5.0.11
+signature: GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11
 
-This file is served as a STATIC asset (no JS required to verify).
-After deploy, fetch:  https://<vercel-domain>/BUILD_VERSION.txt
+Key changes in 5.0.11:
+  - interactive, isOver, and status-bar state now derive from view (server-authoritative)
+    rather than phase. Even if phase lags, the board becomes interactive when
+    view.status === 'active' and view.turn === 'player'.
+  - narrowPhaseForStatusBar('pending-commit') → 'your-turn' (no more "Loading..." flash)
+  - VISIBLE DEBUG PANEL: top-right corner of the page shows phase, view.status,
+    view.turn, coverLifted, interactive, drawOffered live.
 
-If this file returns 404 or shows an older phase, the deployed build does
-NOT contain the 5.0.10 source code regardless of what GitHub shows.
-
-Key changes in 5.0.10:
-  - Auto-lift logic: const shouldLift = hashSkip || v.status !== 'pending';
-    (replaces the older `inProgress = lastMove !== null || moveCount > 0`)
-  - Signature constant: GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10
-    survives minification - grep the live JS bundle for it
-  - Console logs:
-      [GameClient] LIVE GAMECLIENT LOADED - phase5.0.10
-      [GameClient] SIGNATURE: GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10
+Look for the DEBUG panel in the top-right corner of the live page.
