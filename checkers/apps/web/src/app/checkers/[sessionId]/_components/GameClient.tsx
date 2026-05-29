@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // this file carries a signature line that's grep-able both in source and
 // in the minified bundle (the string survives minification).
 //
-// If you see "GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10" in the live page's
+// If you see "GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11" in the live page's
 // JS bundle, the patches are deployed. If not, the deployed bundle is
 // older.
 //
@@ -33,10 +33,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 //   2. View Source / DevTools → Sources → find the relevant chunk
 //   3. Search for "GLAZETOPIA_GAMECLIENT_SIGNATURE"
 // The string will be inlined verbatim by Next's bundler.
-const GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10 =
-  'phase5.0.10 — auto-lift uses status!==pending; commit gated by render';
+const GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11 =
+  'phase5.0.11 — view-authoritative interactive flag + visible debug panel';
 
-const BUILD_STAMP = `phase5.0.10 — ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10}`;
+const BUILD_STAMP = `phase5.0.11 — ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11}`;
 
 if (typeof window !== 'undefined') {
   // eslint-disable-next-line no-console
@@ -46,7 +46,7 @@ if (typeof window !== 'undefined') {
   );
   // eslint-disable-next-line no-console
   console.log(
-    `[GameClient] SIGNATURE: ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_10}`,
+    `[GameClient] SIGNATURE: ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11}`,
   );
 }
 // =============================================================================
@@ -809,14 +809,49 @@ export function GameClient({
     );
   }
 
+  // Phase 5.0.11: VIEW-AUTHORITATIVE derivations.
+  //
+  // Previously, `interactive`, `isOver`, and the status-bar state all
+  // depended on `phase`. That worked when phase always tracked view.status.
+  // But if phase ever lagged (e.g. stuck at 'pending-commit' after a 409
+  // recovery), interactive would be false even though the session was
+  // active and ready to play.
+  //
+  // The fix: derive these from `view` directly. `view` is the
+  // server-authoritative state. `phase` remains useful for transient
+  // UI states (sending-move, unbaked-thinking) but no longer gates
+  // whether the player can click pieces on an active session.
+  //
+  // Spec compliance (this turn):
+  //   - view.status === 'active' && view.turn === 'player' → interactive
+  //   - view.status === 'active' && view.turn === 'cpu'    → not interactive (CPU thinking)
+  //   - view.status !== 'pending'                          → coverLifted is forced true
+  //   - Status bar shows the view-derived state, never 'loading' for active sessions
+
+  // Sending-move and unbaked-thinking are transient — preserve them so
+  // the UI animates correctly during a turn.
+  const isTransientPhase =
+    phase === 'sending-move' || phase === 'unbaked-thinking';
+
+  // The view-derived "what should the UI be showing right now" value.
+  // Falls back to phase only for transient UI animations.
+  const effectivePhase: Phase = isTransientPhase
+    ? phase
+    : mapStatusToPhase(view.status, view.turn);
+
   const interactive =
-    phase === 'your-turn' && coverLifted && !view.drawOffered;
+    view.status === 'active' &&
+    view.turn === 'player' &&
+    coverLifted &&
+    !view.drawOffered &&
+    !isTransientPhase; // don't accept clicks mid-animation
+
   const isOver =
-    phase === 'won' ||
-    phase === 'lost' ||
-    phase === 'draw' ||
-    phase === 'abandoned' ||
-    phase === 'expired';
+    view.status === 'won' ||
+    view.status === 'lost' ||
+    view.status === 'draw' ||
+    view.status === 'abandoned' ||
+    view.status === 'expired';
 
   // Apply theme class to the page shell so theme tokens cascade to every
   // child. `theme-page-bg` additionally swaps the page background for
@@ -848,7 +883,7 @@ export function GameClient({
       </header>
 
       <GameStatusBar
-        state={narrowPhaseForStatusBar(phase)}
+        state={narrowPhaseForStatusBar(effectivePhase)}
         onResign={onResign}
         canResign={!isOver && coverLifted}
       />
@@ -906,6 +941,43 @@ export function GameClient({
 
   return (
     <main className={shellClass}>
+      {/* Phase 5.0.11: visible debug panel. Renders directly on the page
+          so we can verify state without console access. Top-right corner,
+          fixed position. Remove this block once the live bug is resolved. */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 8,
+          right: 8,
+          zIndex: 9999,
+          background: 'rgba(0,0,0,0.85)',
+          color: '#5fe46a',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+          fontSize: 11,
+          padding: '8px 10px',
+          borderRadius: 6,
+          border: '1px solid #5fe46a',
+          lineHeight: 1.5,
+          maxWidth: 320,
+          pointerEvents: 'none',
+        }}
+        aria-hidden="true"
+      >
+        <div style={{ fontWeight: 700, color: '#fff', marginBottom: 4 }}>
+          DEBUG · phase5.0.11
+        </div>
+        <div>phase: <span style={{ color: '#fff' }}>{phase}</span></div>
+        <div>effectivePhase: <span style={{ color: '#fff' }}>{effectivePhase}</span></div>
+        <div>view.status: <span style={{ color: '#fff' }}>{view.status}</span></div>
+        <div>view.turn: <span style={{ color: '#fff' }}>{view.turn}</span></div>
+        <div>coverLifted: <span style={{ color: coverLifted ? '#fff' : '#ff5a5a' }}>{String(coverLifted)}</span></div>
+        <div>needsIntro: <span style={{ color: needsIntro ? '#ff5a5a' : '#fff' }}>{String(needsIntro)}</span></div>
+        <div>interactive: <span style={{ color: interactive ? '#fff' : '#ff5a5a', fontWeight: 700 }}>{String(interactive)}</span></div>
+        <div>drawOffered: <span style={{ color: '#fff' }}>{String(view.drawOffered)}</span></div>
+        <div>moveCount: <span style={{ color: '#fff' }}>{view.moveCount}</span></div>
+        <div>committing: <span style={{ color: '#fff' }}>{String(committing)}</span></div>
+      </div>
+
       <section className="game-stage" aria-label="Glazetopia Checkers stage">
         {needsIntro ? (
           // Pending session: render the cover + PageLift wrapper so the
@@ -1027,8 +1099,13 @@ function narrowPhaseForCrumb(
 
 /**
  * Phase 4.6.4: narrow Phase to the status-bar's supported values.
- * pending-commit shouldn't render in the status bar (the bar is hidden
- * during the cover), but we map it to 'loading' defensively.
+ *
+ * Phase 5.0.11: pending-commit no longer falls through to 'loading'.
+ * If a render reaches this function with phase='pending-commit', the
+ * cover render-gate has the cover up anyway (covering the status bar),
+ * so the bar's state is irrelevant — but mapping to 'your-turn' here
+ * means even an edge-case render won't display "Loading..." while
+ * the user can see the board.
  */
 function narrowPhaseForStatusBar(p: Phase): 'your-turn' | 'sending-move' | 'unbaked-thinking' | 'won' | 'lost' | 'draw' | 'abandoned' | 'expired' | 'loading' {
   switch (p) {
@@ -1043,6 +1120,10 @@ function narrowPhaseForStatusBar(p: Phase): 'your-turn' | 'sending-move' | 'unba
     case 'loading':
       return p;
     case 'pending-commit':
+      // Safety: if this ever renders, the cover is up — the bar isn't
+      // visible. Returning 'your-turn' prevents a flash of "Loading…"
+      // in any edge case where the cover lifts a tick before phase syncs.
+      return 'your-turn';
     case 'error':
     default:
       return 'loading';

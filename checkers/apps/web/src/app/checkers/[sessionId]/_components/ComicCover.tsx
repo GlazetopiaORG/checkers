@@ -126,7 +126,7 @@ export function ComicCover({
       <button
         type="button"
         className="cover-open-btn"
-        onClick={(e) => {
+        onClick={() => {
           // Phase 5.0.9: guaranteed click log. If the user taps this
           // button and this log does NOT appear, the rendered button
           // is from a different component (or the build doesn't have
