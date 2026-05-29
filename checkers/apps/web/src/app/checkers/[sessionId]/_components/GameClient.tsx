@@ -14,7 +14,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Move, Position } from '@glazetopia/engine';
 
@@ -170,6 +170,13 @@ export function GameClient({
   const [committing, setCommitting] = useState<boolean>(false);
   const [commitError, setCommitError] = useState<string | null>(null);
 
+  // Phase 5.0.7: synchronous lock against double-clicks. React state
+  // (`committing`) is async — between two clicks fired in the same tick,
+  // `committing` may still read false on the second click. A ref flips
+  // immediately on first click, blocking any later invocation in the
+  // same render cycle.
+  const commitInFlightRef = useRef(false);
+
   // Hydrate the character from localStorage on the client AFTER mount,
   // so we don't get an SSR/CSR mismatch. Empty deps — runs once.
   useEffect(() => {
@@ -193,16 +200,17 @@ export function GameClient({
   // character locally). Only after the backend confirms (status → active)
   // does the cover lift.
   //
-  // Phase 5.0.5/5.0.6: STRICT guard. commit() is only ever called when
-  // view.status === 'pending'. Any other status (including 'active',
-  // 'won', 'lost', 'draw', 'abandoned', 'expired') is treated as
-  // "already committed" — we lift the cover, sync phase from view, and
-  // return WITHOUT a network call. Comprehensive debug logging proves
-  // which path was taken, which the live console can verify.
+  // Phase 5.0.7: full idempotent flow:
+  //   1. Synchronous ref lock — second click in same tick is a no-op
+  //   2. Pre-commit refetch — verify status is STILL pending RIGHT BEFORE POST
+  //      (catches the case where session was committed between page load
+  //      and click — e.g. another tab, slow network, or any race)
+  //   3. If pre-commit refetch shows non-pending → treat as success (no POST)
+  //   4. If commit returns 409 → treat as success (refetch, lift, never
+  //      leave phase stuck at 'pending-commit')
+  //   5. Ref released in finally so the button can be retried on error
   const handleCoverOpen = useCallback(async () => {
-    // Always persist the character regardless of commit success.
-    saveCharacter(character);
-
+    // -------- SYNCHRONOUS LOCK (runs before any await) --------
     // eslint-disable-next-line no-console
     console.info('[checkers/cover-open] invoked', {
       hasView: !!view,
@@ -210,97 +218,168 @@ export function GameClient({
       viewTurn: view?.turn,
       phase,
       coverLifted,
+      committing,
+      commitInFlight: commitInFlightRef.current,
       opponent,
     });
 
-    if (!view) {
+    if (commitInFlightRef.current) {
       // eslint-disable-next-line no-console
-      console.warn('[checkers/cover-open] SKIPPED: view not loaded');
-      setCommitError('Session not loaded yet.');
+      console.warn('[checkers/cover-open] BLOCKED: commit already in flight (ref lock)');
       return;
     }
-
-    // STRICT GUARD: commit() is ONLY called for pending sessions.
-    // Every other status takes the "already committed" path: sync local
-    // state from the view we already have, lift the cover, return.
-    // No POST. No 409. The button literally cannot reach commit() for
-    // an active session.
-    if (view.status !== 'pending') {
-      // eslint-disable-next-line no-console
-      console.info(
-        `[checkers/cover-open] SKIPPED commit: status=${view.status} (already committed). ` +
-          'Lifting cover and reconciling phase from view.',
-      );
-      setPhase(mapStatusToPhase(view.status, view.turn));
-      setOpponent(coerceOpponentId(view.opponentType));
-      setCoverLifted(true);
-      setCommitError(null);
-      return;
-    }
-
-    // Below this point: view.status === 'pending'. Safe to POST commit.
+    commitInFlightRef.current = true;
     // eslint-disable-next-line no-console
-    console.info('[checkers/cover-open] CALLING commitSession (status=pending)', {
-      opponent,
-    });
-    setCommitting(true);
-    setCommitError(null);
+    console.info('[checkers/cover-open] commit lock acquired');
+
+    // Always persist the character regardless of commit success.
+    saveCharacter(character);
+
     try {
-      const v = await commitSession(apiOpts, opponent);
+      if (!view) {
+        // eslint-disable-next-line no-console
+        console.warn('[checkers/cover-open] SKIPPED: view not loaded');
+        setCommitError('Session not loaded yet.');
+        return;
+      }
+
+      // -------- EARLY GATE on local view --------
+      // If the local view already shows non-pending, lift cover and exit.
+      // No network call, no risk of 409.
+      if (view.status !== 'pending') {
+        // eslint-disable-next-line no-console
+        console.info(
+          `[checkers/cover-open] SKIPPED commit: local view.status=${view.status} (already committed). ` +
+            'Lifting cover and reconciling phase from view.',
+        );
+        setPhase(mapStatusToPhase(view.status, view.turn));
+        setOpponent(coerceOpponentId(view.opponentType));
+        setCoverLifted(true);
+        setCommitError(null);
+        return;
+      }
+
+      // -------- PRE-COMMIT REFETCH --------
+      // Verify the session is STILL pending right before we POST. This
+      // catches the production race where the user holds the cover open
+      // long enough for another tab / a retry / a slow response cycle
+      // to flip the session to active. Without this, the stale local
+      // view sends us straight into the 409.
+      setCommitting(true);
+      setCommitError(null);
+
       // eslint-disable-next-line no-console
-      console.info('[checkers/cover-open] commitSession succeeded', {
-        newStatus: v.status,
-        newTurn: v.turn,
+      console.info('[checkers/cover-open] pre-commit refetch in progress…');
+      let latest = view;
+      try {
+        latest = await fetchSession(apiOpts);
+        // eslint-disable-next-line no-console
+        console.info('[checkers/cover-open] latest status before commit', {
+          status: latest.status,
+          turn: latest.turn,
+          opponentType: latest.opponentType,
+        });
+        setView(latest);
+      } catch (refetchErr) {
+        // Refetch failed — proceed with the local view we have. If it's
+        // already non-pending the next branch handles it; otherwise the
+        // commit POST will hit the 409 branch which also handles it.
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[checkers/cover-open] pre-commit refetch failed, falling back to local view:',
+          refetchErr,
+        );
+      }
+
+      // After refetch: if status flipped to non-pending, skip commit.
+      if (latest.status !== 'pending') {
+        // eslint-disable-next-line no-console
+        console.info(
+          `[checkers/cover-open] SKIPPED commit after refetch: status=${latest.status}. ` +
+            'Lifting cover (no POST sent).',
+        );
+        setPhase(mapStatusToPhase(latest.status, latest.turn));
+        setOpponent(coerceOpponentId(latest.opponentType));
+        setCoverLifted(true);
+        setCommitError(null);
+        return;
+      }
+
+      // -------- COMMIT POST --------
+      // eslint-disable-next-line no-console
+      console.info('[checkers/cover-open] CALLING commitSession (status=pending)', {
+        opponent,
       });
-      setView(v);
-      setPhase(mapStatusToPhase(v.status, v.turn));
-      setOpponent(coerceOpponentId(v.opponentType));
-      setCoverLifted(true);
-    } catch (e) {
-      if (e instanceof CheckersApiError) {
-        if (e.code === 'CONFLICT') {
-          // Defense in depth: even with the strict guard above, a
-          // race could in theory let the POST through. Treat 409 as a
-          // success signal — the session IS committed, just by another
-          // caller. Refetch, sync, lift.
+      try {
+        const v = await commitSession(apiOpts, opponent);
+        // eslint-disable-next-line no-console
+        console.info('[checkers/cover-open] commitSession succeeded', {
+          newStatus: v.status,
+          newTurn: v.turn,
+        });
+        setView(v);
+        setPhase(mapStatusToPhase(v.status, v.turn));
+        setOpponent(coerceOpponentId(v.opponentType));
+        setCoverLifted(true);
+      } catch (e) {
+        if (e instanceof CheckersApiError && e.code === 'CONFLICT') {
+          // 409: the session is already committed (race, retry, or any
+          // other reason). Per spec: treat as success. Refetch, sync,
+          // lift, and ENSURE phase is no longer 'pending-commit'.
           // eslint-disable-next-line no-console
-          console.warn(
-            '[checkers/cover-open] 409 CONFLICT (should not happen with strict guard); ' +
-              'recovering via refetch + lift',
-          );
+          console.info('[checkers/cover-open] 409 treated as success');
           try {
             const v = await fetchSession(apiOpts);
+            // eslint-disable-next-line no-console
+            console.info('[checkers/cover-open] post-409 refetch', {
+              status: v.status,
+              turn: v.turn,
+            });
             setView(v);
             setPhase(mapStatusToPhase(v.status, v.turn));
             setOpponent(coerceOpponentId(v.opponentType));
             setCoverLifted(true);
             setCommitError(null);
-            return;
           } catch (e2) {
-            // Refetch failed but the session IS committed; lift anyway so
-            // the board becomes interactive. Next user action refreshes state.
+            // Refetch failed but server confirmed active. Force phase
+            // off 'pending-commit' using the locally-known opponent and
+            // assume player's turn (safe default; reconciliation effect
+            // and next user action will correct anything off).
             // eslint-disable-next-line no-console
-            console.error('[checkers/cover-open] CONFLICT-recovery refetch failed:', e2);
+            console.error(
+              '[checkers/cover-open] post-409 refetch failed; forcing phase=your-turn anyway:',
+              e2,
+            );
+            setPhase('your-turn');
             setCoverLifted(true);
             setCommitError(null);
-            return;
           }
+          return;
         }
-        // eslint-disable-next-line no-console
-        console.error(`[checkers/cover-open] commit failed: ${e.code}: ${e.message}`);
-        setCommitError(`${e.code}: ${e.message}`);
-      } else {
-        // eslint-disable-next-line no-console
-        console.error('[checkers/cover-open] commit threw non-API error:', e);
-        setCommitError(e instanceof Error ? e.message : 'Failed to open the comic');
+        if (e instanceof CheckersApiError) {
+          // eslint-disable-next-line no-console
+          console.error(`[checkers/cover-open] commit failed: ${e.code}: ${e.message}`);
+          setCommitError(`${e.code}: ${e.message}`);
+        } else {
+          // eslint-disable-next-line no-console
+          console.error('[checkers/cover-open] commit threw non-API error:', e);
+          setCommitError(e instanceof Error ? e.message : 'Failed to open the comic');
+        }
       }
     } finally {
       setCommitting(false);
+      // Release the lock so the user can retry on legitimate errors.
+      // Success paths have already lifted the cover (so the button no
+      // longer exists for pending-session render), making retry impossible
+      // by structural means.
+      commitInFlightRef.current = false;
+      // eslint-disable-next-line no-console
+      console.info('[checkers/cover-open] commit lock released');
     }
-    // handleApiFailure is stable; apiOpts is recreated per render but it's
-    // a thin {sessionId, token} object — fine.
+    // apiOpts is recreated per render but it's a thin {sessionId, token}
+    // object — fine. handleApiFailure is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [character, opponent, view, sessionId, token, phase, coverLifted]);
+  }, [character, opponent, view, sessionId, token, phase, coverLifted, committing]);
 
   // --- Initial load ---------------------------------------------------------
   useEffect(() => {
