@@ -24,7 +24,7 @@
 
 import type { Client } from 'discord.js';
 
-import { getEnv } from './env.js';
+import { getEnv } from './env';
 
 export type PermissionsCheckResult =
   | { ok: true }

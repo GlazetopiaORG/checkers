@@ -17,10 +17,10 @@
 
 import { Client, Events, GatewayIntentBits } from 'discord.js';
 
-import { makeDispatcher } from './commands/index.js';
-import { getEnv } from './env.js';
-import { startBotHttpServer } from './http-server.js';
-import { verifyRolePermissions } from './permissions-check.js';
+import { makeDispatcher } from './commands/index';
+import { getEnv } from './env';
+import { startBotHttpServer } from './http-server';
+import { verifyRolePermissions } from './permissions-check';
 
 async function main(): Promise<void> {
   const env = getEnv();

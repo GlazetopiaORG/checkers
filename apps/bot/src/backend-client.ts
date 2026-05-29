@@ -12,7 +12,7 @@
 
 import { createHmac } from 'node:crypto';
 
-import { getEnv } from './env.js';
+import { getEnv } from './env';
 
 const HMAC_HEADER = 'x-checkers-signature';
 

@@ -1,13 +1,24 @@
 glazetopia-checkers
-phase: 5.0.11
-signature: GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11
+phase: 5.0.12
+signature: GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_12
 
-Key changes in 5.0.11:
-  - interactive, isOver, and status-bar state now derive from view (server-authoritative)
-    rather than phase. Even if phase lags, the board becomes interactive when
-    view.status === 'active' and view.turn === 'player'.
-  - narrowPhaseForStatusBar('pending-commit') → 'your-turn' (no more "Loading..." flash)
-  - VISIBLE DEBUG PANEL: top-right corner of the page shows phase, view.status,
-    view.turn, coverLifted, interactive, drawOffered live.
+KEY FIX in 5.0.12 — root cause of "{"moves":[]}":
 
-Look for the DEBUG panel in the top-right corner of the live page.
+The previous commitSession() implementation did NOT verify that its UPDATE
+matched any rows. When `.eq('status', 'pending')` race-safety check
+silently filtered the UPDATE (RLS, race, etc.), the function returned a
+fabricated "active" view to the client while the DB row stayed at 'pending'.
+Then every subsequent getLegalMoves() call short-circuited because
+`row.status !== 'active'`, returning empty arrays.
+
+Fix: commitSession now uses .select() on the UPDATE to confirm the row
+was actually changed. If zero rows match, it reloads the row; if the
+reload still shows pending, it throws INTERNAL_ERROR with a pointer
+to investigate RLS.
+
+Other 5.0.12 changes:
+  - getLegalMoves logs row status/turn whenever it returns []
+    (so Vercel function logs show exactly why moves are empty)
+  - onSquareClick now gates on view.status/view.turn (server-authoritative)
+    not on `phase` (which can lag)
+  - Visible debug panel from 5.0.11 still present (top-right corner)

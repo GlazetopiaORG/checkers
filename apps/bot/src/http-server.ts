@@ -31,8 +31,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import type { Client } from 'discord.js';
 
-import { getEnv } from './env.js';
-import { grantLevelPassedRole, type GrantResult } from './role-service.js';
+import { getEnv } from './env';
+import { grantLevelPassedRole, type GrantResult } from './role-service';
 
 const SIG_HEADER = 'x-checkers-signature';
 

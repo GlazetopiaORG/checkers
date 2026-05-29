@@ -1,5 +1,3 @@
-export const dynamic = 'force-dynamic';
-
 /**
  * POST /api/checkers/session/[id]/accept-draw
  *

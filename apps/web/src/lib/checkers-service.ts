@@ -253,19 +253,44 @@ export async function commitSession(
     );
   }
 
-  const { error } = await supabase
+  // Phase 5.0.12: explicitly request the updated row back. If the
+  // .eq('status', 'pending') race-safety check doesn't match (because
+  // the row was already flipped, or RLS silently filtered it), the
+  // UPDATE matches zero rows but Supabase still returns no `error`.
+  // Without this check, the function would fabricate a "active" view
+  // while the DB row stays at 'pending', and every subsequent call
+  // (getLegalMoves, submitMove) would short-circuit because the row's
+  // status isn't 'active'.
+  const { data: updatedRows, error } = await supabase
     .from('checkers_sessions')
     .update({
       status: 'active',
       opponent_type: opponentType,
     })
     .eq('id', sessionId)
-    .eq('status', 'pending'); // race-safety: only flip if still pending
+    .eq('status', 'pending') // race-safety: only flip if still pending
+    .select('id, status, opponent_type');
   if (error) {
     throw new ApiError(
       'INTERNAL_ERROR',
       `Failed to commit session: ${error.message}`,
     );
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    // Either the row was already committed by another caller (race) or
+    // RLS hid it. Reload the row and return its current shape — caller
+    // gets the truth. If it's still 'pending' the caller will see that
+    // and can investigate; otherwise we treat it as success (idempotent).
+    const fresh = await loadSessionRow(sessionId, expectedUserId, presentedToken);
+    if (fresh.status === 'pending') {
+      // UPDATE was silently filtered — DB state is wrong.
+      throw new ApiError(
+        'INTERNAL_ERROR',
+        'commit UPDATE matched zero rows; session row remains pending. ' +
+          'Check Supabase RLS policies for checkers_sessions UPDATE.',
+      );
+    }
+    return rowToView(fresh);
   }
 
   return rowToView({
@@ -286,10 +311,38 @@ export async function getLegalMoves(
   from: Position | undefined,
 ): Promise<Move[]> {
   const row = await loadSessionRow(sessionId, expectedUserId, presentedToken);
-  if (row.status !== 'active') return [];
-  if (row.turn !== 'player') return [];
+
+  // Phase 5.0.12: log every call so we can see in Vercel logs WHY a request
+  // returned []. The most common cause has been row.status !== 'active'.
+  // eslint-disable-next-line no-console
+  console.log('[api/legal-moves] request', {
+    sessionId,
+    rowStatus: row.status,
+    rowTurn: row.turn,
+    rowOpponentType: row.opponent_type,
+    rowMoveCount: row.move_count,
+    from,
+  });
+
+  if (row.status !== 'active') {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[api/legal-moves] returning [] because status=${row.status} (expected 'active')`,
+    );
+    return [];
+  }
+  if (row.turn !== 'player') {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[api/legal-moves] returning [] because turn=${row.turn} (expected 'player')`,
+    );
+    return [];
+  }
   const state = rowToState(row);
-  return engineLegalMoves(state, defaultConfig, from);
+  const moves = engineLegalMoves(state, defaultConfig, from);
+  // eslint-disable-next-line no-console
+  console.log(`[api/legal-moves] engine returned ${moves.length} moves`);
+  return moves;
 }
 
 // -----------------------------------------------------------------------------

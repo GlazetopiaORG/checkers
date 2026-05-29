@@ -1,5 +1,3 @@
-export const dynamic = 'force-dynamic';
-
 /**
  * GET /api/checkers/session/[id]/legal-moves?from=r,c
  *

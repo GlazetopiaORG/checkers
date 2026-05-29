@@ -17,15 +17,15 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 
-import { startSession } from '../backend-client.js';
+import { startSession } from '../backend-client';
 import {
   cooldownEmbed,
   errorEmbed,
   sessionStartedEmbed,
-} from '../lib/embeds.js';
-import { describeBackendError } from '../lib/errors.js';
-import { getUserMarks } from '../backend-client.js';
-import type { CooldownTracker } from '../lib/cooldown.js';
+} from '../lib/embeds';
+import { describeBackendError } from '../lib/errors';
+import { getUserMarks } from '../backend-client';
+import type { CooldownTracker } from '../lib/cooldown';
 
 export const checkersCommandData = new SlashCommandBuilder()
   .setName('checkers')

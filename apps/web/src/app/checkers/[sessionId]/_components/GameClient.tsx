@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // this file carries a signature line that's grep-able both in source and
 // in the minified bundle (the string survives minification).
 //
-// If you see "GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11" in the live page's
+// If you see "GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_12" in the live page's
 // JS bundle, the patches are deployed. If not, the deployed bundle is
 // older.
 //
@@ -33,10 +33,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 //   2. View Source / DevTools → Sources → find the relevant chunk
 //   3. Search for "GLAZETOPIA_GAMECLIENT_SIGNATURE"
 // The string will be inlined verbatim by Next's bundler.
-const GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11 =
-  'phase5.0.11 — view-authoritative interactive flag + visible debug panel';
+const GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_12 =
+  'phase5.0.12 — commitSession update verification + getLegalMoves logging + view-gated clicks';
 
-const BUILD_STAMP = `phase5.0.11 — ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11}`;
+const BUILD_STAMP = `phase5.0.12 — ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_12}`;
 
 if (typeof window !== 'undefined') {
   // eslint-disable-next-line no-console
@@ -46,7 +46,7 @@ if (typeof window !== 'undefined') {
   );
   // eslint-disable-next-line no-console
   console.log(
-    `[GameClient] SIGNATURE: ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_11}`,
+    `[GameClient] SIGNATURE: ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_12}`,
   );
 }
 // =============================================================================
@@ -552,7 +552,29 @@ export function GameClient({
 
   const onSquareClick = useCallback(
     async (row: number, col: number) => {
-      if (phase !== 'your-turn' || !view) return;
+      // Phase 5.0.12: gate on VIEW (server-authoritative), not phase.
+      // Previously this checked `phase !== 'your-turn'`, which silently
+      // dropped clicks when phase lagged behind view. Use the same gates
+      // as the `interactive` flag the Board uses.
+      if (!view) {
+        // eslint-disable-next-line no-console
+        console.warn('[onSquareClick] no view, ignoring click');
+        return;
+      }
+      if (view.status !== 'active') {
+        // eslint-disable-next-line no-console
+        console.warn(`[onSquareClick] view.status=${view.status}, ignoring click`);
+        return;
+      }
+      if (view.turn !== 'player') {
+        // eslint-disable-next-line no-console
+        console.warn(`[onSquareClick] view.turn=${view.turn}, ignoring click`);
+        return;
+      }
+      if (phase === 'sending-move' || phase === 'unbaked-thinking') {
+        // Mid-animation; ignore.
+        return;
+      }
       const cell = view.board[row]?.[col];
 
       // Case 1: clicking a legal destination → submit move
@@ -964,7 +986,7 @@ export function GameClient({
         aria-hidden="true"
       >
         <div style={{ fontWeight: 700, color: '#fff', marginBottom: 4 }}>
-          DEBUG · phase5.0.11
+          DEBUG · phase5.0.12
         </div>
         <div>phase: <span style={{ color: '#fff' }}>{phase}</span></div>
         <div>effectivePhase: <span style={{ color: '#fff' }}>{effectivePhase}</span></div>

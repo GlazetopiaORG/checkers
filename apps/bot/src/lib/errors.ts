@@ -6,7 +6,7 @@
  * copy that fits the Glazetopia tone.
  */
 
-import { BackendApiError } from '../backend-client.js';
+import { BackendApiError } from '../backend-client';
 
 interface UserFacingError {
   title: string;

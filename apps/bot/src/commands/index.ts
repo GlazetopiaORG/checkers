@@ -11,16 +11,16 @@ import type {
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
 
-import { CooldownTracker } from '../lib/cooldown.js';
-import { getEnv } from '../env.js';
+import { CooldownTracker } from '../lib/cooldown';
+import { getEnv } from '../env';
 import {
   checkersCommandData,
   makeCheckersHandler,
-} from './checkers.js';
+} from './checkers';
 import {
   checkersStatusCommandData,
   handleCheckersStatus,
-} from './checkers-status.js';
+} from './checkers-status';
 
 /**
  * JSON definitions exported for the register-commands script.
