@@ -35,6 +35,14 @@ export async function POST(
     const payload = await requireSessionAuth(req, sessionId);
     const token = extractTokenForHash(req);
 
+    // Phase 5.0.8: identify request origin in case of 409. Logs to Vercel.
+    // eslint-disable-next-line no-console
+    console.log('[api/commit] POST received', {
+      sessionId,
+      ua: req.headers.get('user-agent')?.slice(0, 80) ?? null,
+      referer: req.headers.get('referer') ?? null,
+    });
+
     const body = (await req.json().catch(() => ({}))) as { opponentType?: unknown };
 
     const view = await commitSession(sessionId, payload.uid, token, {
@@ -42,6 +50,8 @@ export async function POST(
     });
     return NextResponse.json(view, { status: 200 });
   } catch (err) {
+    // eslint-disable-next-line no-console
+    console.log('[api/commit] POST threw', { sessionId: ctx.params.id, err: err instanceof Error ? err.message : String(err) });
     return handleApiError(err);
   }
 }

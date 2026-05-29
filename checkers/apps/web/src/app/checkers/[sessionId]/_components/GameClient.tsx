@@ -16,6 +16,24 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+// =============================================================================
+// PHASE 5.0.8 BUILD STAMP & CANARY
+// =============================================================================
+// If you see "LIVE GAMECLIENT LOADED" in the browser console, this file is
+// the one rendering the page. If you DON'T see it, the deployed bundle is
+// from a different commit and the Phase 5.0.6/5.0.7/5.0.8 patches are not live.
+//
+// The build stamp helps verify the exact build version on the deployed site.
+// Update this on each Phase change so it shows in console.
+const BUILD_STAMP = 'phase5.0.8 — commit-flow idempotency + canary';
+
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line no-console
+  console.log(`%c[GameClient] LIVE GAMECLIENT LOADED — ${BUILD_STAMP}`, 'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;');
+}
+// =============================================================================
+
+
 import type { Move, Position } from '@glazetopia/engine';
 
 import {

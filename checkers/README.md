@@ -16,7 +16,8 @@ A Discord-launched checkers mini-game where players battle the Unbaked. Three wi
 - ✅ **Phase 4.6.4** — Opponent paths (Sheriff Buttercream — easier; The Unbaked — harder; thresholds tuned in Phase 5.0.4)
 - ✅ **Phase 5.0.4** — Threshold tuning: Sheriff 5→4, Unbaked 3→2
 - ✅ **Phase 5.0.6** — Live commit-flow fix v2: ComicCover only mounted when status==="pending"
-- ✅ **Phase 5.0.7** — Commit-flow idempotency: ref-lock against double-click, pre-commit refetch, 409 always treated as success with phase reconciliation
+- ✅ **Phase 5.0.7** — Commit-flow idempotency: ref-lock + pre-commit refetch + 409 treated as success
+- ✅ **Phase 5.0.8** — Build canaries to verify deployed bundle: module-load, render, network-layer, and server-route logs prove which code path is live
 - ✅ **Phase 4.6.4.1** — Discord status per-path display (removed combined-total view)
 - ✅ **Phase 5** — Discord role assignment via bot HTTP endpoint; opponent-aware HUD
 - ✅ **Phase 5.0.1** — Test bootstrap hardening: import-time env injection, role-service mock-overwrite bug fix, BOT_HTTP_PORT=0 (OS-assigned) allowed

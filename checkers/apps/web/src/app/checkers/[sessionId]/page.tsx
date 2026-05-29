@@ -9,6 +9,10 @@
 
 import { GameClient } from './_components/GameClient';
 
+// Phase 5.0.8: server-side build stamp visible in Vercel function logs.
+// eslint-disable-next-line no-console
+console.log('[page/checkers/[sessionId]] LOADED — phase5.0.8');
+
 interface PageProps {
   params: { sessionId: string };
   searchParams: { t?: string };
