@@ -17,8 +17,8 @@
 
 import { REST, Routes } from 'discord.js';
 
-import { commandPayloads } from '../commands/index';
-import { getEnv } from '../env';
+import { commandPayloads } from '../commands/index.js';
+import { getEnv } from '../env.js';
 
 async function main(): Promise<void> {
   const env = getEnv();

@@ -12,9 +12,9 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 
-import { getUserMarks } from '../backend-client';
-import { errorEmbed, marksStatusEmbed } from '../lib/embeds';
-import { describeBackendError } from '../lib/errors';
+import { getUserMarks } from '../backend-client.js';
+import { errorEmbed, marksStatusEmbed } from '../lib/embeds.js';
+import { describeBackendError } from '../lib/errors.js';
 
 export const checkersStatusCommandData = new SlashCommandBuilder()
   .setName('checkers-status')
