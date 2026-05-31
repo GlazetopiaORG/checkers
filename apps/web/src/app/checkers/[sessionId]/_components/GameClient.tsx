@@ -16,42 +16,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-// =============================================================================
-// PHASE 5.0.10 BUILD STAMP & SELF-VERIFICATION
-// =============================================================================
-// The deployed Vercel bundle has been shipping older code than these zips
-// for several phases now. To prove unambiguously which version is running,
-// this file carries a signature line that's grep-able both in source and
-// in the minified bundle (the string survives minification).
-//
-// If you see "GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_12" in the live page's
-// JS bundle, the patches are deployed. If not, the deployed bundle is
-// older.
-//
-// To inspect the live bundle:
-//   1. Open the live game page
-//   2. View Source / DevTools → Sources → find the relevant chunk
-//   3. Search for "GLAZETOPIA_GAMECLIENT_SIGNATURE"
-// The string will be inlined verbatim by Next's bundler.
-const GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_12 =
-  'phase5.0.12 — commitSession update verification + getLegalMoves logging + view-gated clicks';
-
-const BUILD_STAMP = `phase5.0.12 — ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_12}`;
-
-if (typeof window !== 'undefined') {
-  // eslint-disable-next-line no-console
-  console.log(
-    `%c[GameClient] LIVE GAMECLIENT LOADED — ${BUILD_STAMP}`,
-    'background:#222;color:#5fe46a;font-weight:bold;padding:4px 8px;border-radius:4px;',
-  );
-  // eslint-disable-next-line no-console
-  console.log(
-    `[GameClient] SIGNATURE: ${GLAZETOPIA_GAMECLIENT_SIGNATURE_v5_0_12}`,
-  );
-}
-// =============================================================================
-
-
 import type { Move, Position } from '@glazetopia/engine';
 
 import {
@@ -247,17 +211,6 @@ export function GameClient({
   //   5. Ref released in finally so the button can be retried on error
   const handleCoverOpen = useCallback(async () => {
     // -------- SYNCHRONOUS LOCK (runs before any await) --------
-    // eslint-disable-next-line no-console
-    console.info('[checkers/cover-open] invoked', {
-      hasView: !!view,
-      viewStatus: view?.status,
-      viewTurn: view?.turn,
-      phase,
-      coverLifted,
-      committing,
-      commitInFlight: commitInFlightRef.current,
-      opponent,
-    });
 
     if (commitInFlightRef.current) {
       // eslint-disable-next-line no-console
@@ -265,8 +218,6 @@ export function GameClient({
       return;
     }
     commitInFlightRef.current = true;
-    // eslint-disable-next-line no-console
-    console.info('[checkers/cover-open] commit lock acquired');
 
     // Always persist the character regardless of commit success.
     saveCharacter(character);
@@ -283,11 +234,6 @@ export function GameClient({
       // If the local view already shows non-pending, lift cover and exit.
       // No network call, no risk of 409.
       if (view.status !== 'pending') {
-        // eslint-disable-next-line no-console
-        console.info(
-          `[checkers/cover-open] SKIPPED commit: local view.status=${view.status} (already committed). ` +
-            'Lifting cover and reconciling phase from view.',
-        );
         setPhase(mapStatusToPhase(view.status, view.turn));
         setOpponent(coerceOpponentId(view.opponentType));
         setCoverLifted(true);
@@ -304,17 +250,9 @@ export function GameClient({
       setCommitting(true);
       setCommitError(null);
 
-      // eslint-disable-next-line no-console
-      console.info('[checkers/cover-open] pre-commit refetch in progress…');
       let latest = view;
       try {
         latest = await fetchSession(apiOpts);
-        // eslint-disable-next-line no-console
-        console.info('[checkers/cover-open] latest status before commit', {
-          status: latest.status,
-          turn: latest.turn,
-          opponentType: latest.opponentType,
-        });
         setView(latest);
       } catch (refetchErr) {
         // Refetch failed — proceed with the local view we have. If it's
@@ -329,11 +267,6 @@ export function GameClient({
 
       // After refetch: if status flipped to non-pending, skip commit.
       if (latest.status !== 'pending') {
-        // eslint-disable-next-line no-console
-        console.info(
-          `[checkers/cover-open] SKIPPED commit after refetch: status=${latest.status}. ` +
-            'Lifting cover (no POST sent).',
-        );
         setPhase(mapStatusToPhase(latest.status, latest.turn));
         setOpponent(coerceOpponentId(latest.opponentType));
         setCoverLifted(true);
@@ -342,17 +275,8 @@ export function GameClient({
       }
 
       // -------- COMMIT POST --------
-      // eslint-disable-next-line no-console
-      console.info('[checkers/cover-open] CALLING commitSession (status=pending)', {
-        opponent,
-      });
       try {
         const v = await commitSession(apiOpts, opponent);
-        // eslint-disable-next-line no-console
-        console.info('[checkers/cover-open] commitSession succeeded', {
-          newStatus: v.status,
-          newTurn: v.turn,
-        });
         setView(v);
         setPhase(mapStatusToPhase(v.status, v.turn));
         setOpponent(coerceOpponentId(v.opponentType));
@@ -362,15 +286,8 @@ export function GameClient({
           // 409: the session is already committed (race, retry, or any
           // other reason). Per spec: treat as success. Refetch, sync,
           // lift, and ENSURE phase is no longer 'pending-commit'.
-          // eslint-disable-next-line no-console
-          console.info('[checkers/cover-open] 409 treated as success');
           try {
             const v = await fetchSession(apiOpts);
-            // eslint-disable-next-line no-console
-            console.info('[checkers/cover-open] post-409 refetch', {
-              status: v.status,
-              turn: v.turn,
-            });
             setView(v);
             setPhase(mapStatusToPhase(v.status, v.turn));
             setOpponent(coerceOpponentId(v.opponentType));
@@ -409,8 +326,6 @@ export function GameClient({
       // longer exists for pending-session render), making retry impossible
       // by structural means.
       commitInFlightRef.current = false;
-      // eslint-disable-next-line no-console
-      console.info('[checkers/cover-open] commit lock released');
     }
     // apiOpts is recreated per render but it's a thin {sessionId, token}
     // object — fine. handleApiFailure is stable.
@@ -422,18 +337,8 @@ export function GameClient({
     let cancelled = false;
     (async () => {
       try {
-        // eslint-disable-next-line no-console
-        console.info('[checkers/init] fetching session', { sessionId });
         const v = await fetchSession(apiOpts);
         if (cancelled) return;
-        // eslint-disable-next-line no-console
-        console.info('[checkers/init] session loaded', {
-          status: v.status,
-          turn: v.turn,
-          moveCount: v.moveCount,
-          hasLastMove: v.lastMove !== null,
-          opponentType: v.opponentType,
-        });
         setView(v);
         setPhase(mapStatusToPhase(v.status, v.turn));
         // Phase 4.6.4: if the session was already committed (i.e. user
@@ -454,17 +359,6 @@ export function GameClient({
         const hashSkip =
           typeof window !== 'undefined' && window.location.hash === '#skip-intro';
         const shouldLift = hashSkip || v.status !== 'pending';
-        // eslint-disable-next-line no-console
-        console.info('[checkers/init] cover auto-lift decision', {
-          shouldLift,
-          hashSkip,
-          isPending: v.status === 'pending',
-          reason: hashSkip
-            ? 'dev hash skip'
-            : v.status !== 'pending'
-              ? `status=${v.status} (not pending)`
-              : 'staying up for character/opponent selection',
-        });
         if (shouldLift) {
           setCoverLifted(true);
         }
@@ -491,10 +385,6 @@ export function GameClient({
   useEffect(() => {
     if (!view) return;
     if (view.status !== 'pending' && !coverLifted) {
-      // eslint-disable-next-line no-console
-      console.info(
-        `[checkers/lift-guarantee] forcing coverLifted=true for status=${view.status}`,
-      );
       setCoverLifted(true);
     }
   }, [view, coverLifted]);
@@ -520,10 +410,6 @@ export function GameClient({
     if (transientPhase) return;
     const expected = mapStatusToPhase(view.status, view.turn);
     if (expected !== phase) {
-      // eslint-disable-next-line no-console
-      console.info(
-        `[checkers/reconcile] phase mismatch ${phase} → ${expected} (view.status=${view.status} turn=${view.turn})`,
-      );
       setPhase(expected);
     }
   }, [view, phase]);
@@ -948,58 +834,10 @@ export function GameClient({
   // One-time debug log of the final render decision. Visible in the
   // browser console so we can verify on the live deploy.
   if (typeof window !== 'undefined') {
-    // eslint-disable-next-line no-console
-    console.debug('[checkers/render]', {
-      viewStatus: view.status,
-      viewTurn: view.turn,
-      phase,
-      coverLifted,
-      interactive,
-      drawOffered: view.drawOffered,
-      needsIntro,
-      mountsCover: needsIntro,
-    });
   }
 
   return (
     <main className={shellClass}>
-      {/* Phase 5.0.11: visible debug panel. Renders directly on the page
-          so we can verify state without console access. Top-right corner,
-          fixed position. Remove this block once the live bug is resolved. */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 8,
-          right: 8,
-          zIndex: 9999,
-          background: 'rgba(0,0,0,0.85)',
-          color: '#5fe46a',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-          fontSize: 11,
-          padding: '8px 10px',
-          borderRadius: 6,
-          border: '1px solid #5fe46a',
-          lineHeight: 1.5,
-          maxWidth: 320,
-          pointerEvents: 'none',
-        }}
-        aria-hidden="true"
-      >
-        <div style={{ fontWeight: 700, color: '#fff', marginBottom: 4 }}>
-          DEBUG · phase5.0.12
-        </div>
-        <div>phase: <span style={{ color: '#fff' }}>{phase}</span></div>
-        <div>effectivePhase: <span style={{ color: '#fff' }}>{effectivePhase}</span></div>
-        <div>view.status: <span style={{ color: '#fff' }}>{view.status}</span></div>
-        <div>view.turn: <span style={{ color: '#fff' }}>{view.turn}</span></div>
-        <div>coverLifted: <span style={{ color: coverLifted ? '#fff' : '#ff5a5a' }}>{String(coverLifted)}</span></div>
-        <div>needsIntro: <span style={{ color: needsIntro ? '#ff5a5a' : '#fff' }}>{String(needsIntro)}</span></div>
-        <div>interactive: <span style={{ color: interactive ? '#fff' : '#ff5a5a', fontWeight: 700 }}>{String(interactive)}</span></div>
-        <div>drawOffered: <span style={{ color: '#fff' }}>{String(view.drawOffered)}</span></div>
-        <div>moveCount: <span style={{ color: '#fff' }}>{view.moveCount}</span></div>
-        <div>committing: <span style={{ color: '#fff' }}>{String(committing)}</span></div>
-      </div>
-
       <section className="game-stage" aria-label="Glazetopia Checkers stage">
         {needsIntro ? (
           // Pending session: render the cover + PageLift wrapper so the

@@ -71,7 +71,7 @@ export function CrumbTrail(props: CrumbTrailProps): JSX.Element {
   } = props;
 
   const c = CRUMB_TRAIL_CONTENT;
-  const crumb = pickCrumbForSession(sessionId);
+  const crumb = pickCrumbForSession(sessionId, opponent);
   const tip = pickTipForSession(sessionId);
   const themeLore = c.themeLore[theme.key];
   const opponentInfo = OPPONENT_DISPLAY[opponent];

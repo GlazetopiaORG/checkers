@@ -47,6 +47,39 @@
  */
 
 import type { ThemeKey } from '../_lib/themes';
+import type { OpponentId } from '../_lib/opponents';
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  MODE — switch between rotating lore and a pinned announcement          ║
+// ╠══════════════════════════════════════════════════════════════════════════╣
+// ║                                                                          ║
+// ║  • "random"   — show one randomly chosen line from the RANDOM_CRUMBS    ║
+// ║                 array (and optionally one from RANDOM_TIPS). The        ║
+// ║                 choice is STABLE per session: the same player on the    ║
+// ║                 same game sees the same line each render.               ║
+// ║                                                                          ║
+// ║  • "featured" — always show FEATURED_CRUMB (and FEATURED_TIP, if set).  ║
+// ║                 Use this for launch announcements or limited-time       ║
+// ║                 messages that should be pinned for everyone.            ║
+// ║                                                                          ║
+// ║  To switch: change the value of MODE below to "random" or "featured".  ║
+// ║                                                                          ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+const MODE: 'random' | 'featured' = 'random';
+
+// ┌─── EDIT HERE: featured (pinned) message ─────────────────────────────────
+//
+// Used only when MODE = "featured". Shows on every player's panel.
+// Set featuredTip to null if you only want to pin the crumb without a tip.
+//
+// Example announcement values:
+//   featuredCrumb: 'World 2 is opening soon. Watch the crumbs.'
+//   featuredTip:   'New paths unlock at the dusk before the next moon.'
+// ───────────────────────────────────────────────────────────────────────────
+const FEATURED = {
+  featuredCrumb: 'World 2 is opening soon. Watch the crumbs.',
+  featuredTip: null as string | null,
+} as const;
 
 // ┌─── EDIT HERE: panel header ──────────────────────────────────────────────
 //
@@ -132,11 +165,11 @@ const THEME_LORE: Record<ThemeKey, string> = {
     'The page snaps tight at every move. POW! BAM! — somewhere a narrator is having the time of their life.',
 };
 
-// ┌─── EDIT HERE: mystery breadcrumb lines ──────────────────────────────────
+// ┌─── EDIT HERE: random crumb messages (MODE = "random") ──────────────────
 //
-// These are the heart of the panel. One is picked per session and shown
-// in the "Crumb" section. The same session always shows the same crumb
-// so the player can take a screenshot, share it, theorize.
+// These are the heart of the panel in "random" mode. One is picked per
+// session and shown in the "Crumb" section. The same session always shows
+// the same line so the player can take a screenshot, share it, theorize.
 //
 // HOW TO ADD MORE: just add a new line to the array. Keep them:
 //   - SHORT (one sentence)
@@ -144,27 +177,48 @@ const THEME_LORE: Record<ThemeKey, string> = {
 //   - SAFE (no real answers, codes, colors, wallet stuff)
 //
 // HOW TO REMOVE: delete the line. The system handles any count >= 1.
+//
+// (When MODE = "featured", these are ignored — FEATURED.featuredCrumb is
+//  shown instead.)
 // ───────────────────────────────────────────────────────────────────────────
-const CRUMBS: readonly string[] = [
+const RANDOM_CRUMBS: readonly string[] = [
   'Not every sprinkle shines by accident.',
   'The Unbaked leave crumbs where they should leave shadows.',
   'Uncle Long John says a quiet board can still hide a trap.',
   'Some clues are baked into the edges.',
   'GUARDIAN was not written for decoration.',
-  'Buttercream still dreams of the old recipe. He just can\'t read it anymore.',
+  "Buttercream still dreams of the old recipe. He just can't read it anymore.",
   'Count the kings. Then count again, slower.',
   'Crumbs travel further when the wind comes from the gulch.',
-  'A locked door is just a door that hasn\'t been asked nicely.',
-  'D\'Lish doesn\'t carry that sword for show.',
+  "A locked door is just a door that hasn't been asked nicely.",
+  "D'Lish doesn't carry that sword for show.",
 ];
 
-// ┌─── EDIT HERE: rotating checkers tips ────────────────────────────────────
+// ┌─── EDIT HERE (OPTIONAL): opponent-specific random crumbs ────────────────
+//
+// If you want certain lines to ONLY appear when the player is facing a
+// specific opponent, put them here. Lines from here are picked instead of
+// the RANDOM_CRUMBS pool whenever the player's opponent matches.
+//
+// Leave an opponent's array empty (e.g. `sheriff: []`) to fall back to
+// the general RANDOM_CRUMBS pool for that opponent.
+//
+// Most projects can ignore this section.
+// ───────────────────────────────────────────────────────────────────────────
+const OPPONENT_RANDOM_CRUMBS: Record<OpponentId, readonly string[]> = {
+  sheriff: [],
+  unbaked: [],
+};
+
+// ┌─── EDIT HERE: random tips (MODE = "random") ─────────────────────────────
 //
 // Same rotation logic as crumbs — one tip per session, deterministic.
 // These are gameplay-flavored rather than lore-flavored. Useful for
 // newer players without breaking immersion.
+//
+// To hide the tip footer entirely, set this to `[]`.
 // ───────────────────────────────────────────────────────────────────────────
-const TIPS: readonly string[] = [
+const RANDOM_TIPS: readonly string[] = [
   'Forced captures are not optional. Take them.',
   'Kings cross more ground than men. Make every promotion count.',
   'A draw earns no mark. Play to win.',
@@ -184,7 +238,9 @@ export interface CrumbTrailContent {
   themeLore: Record<ThemeKey, string>;
   /** Phase 4.6.4: per-opponent lore strings, shown in the Path section. */
   opponentLore: typeof OPPONENT_LORE;
+  /** All random-mode crumbs (kept for unit-test/safety-scan introspection). */
   crumbs: readonly string[];
+  /** All random-mode tips (kept for unit-test/safety-scan introspection). */
   tips: readonly string[];
 }
 
@@ -194,8 +250,18 @@ export const CRUMB_TRAIL_CONTENT: CrumbTrailContent = {
   duelLabels: DUEL_LABELS,
   themeLore: THEME_LORE,
   opponentLore: OPPONENT_LORE,
-  crumbs: CRUMBS,
-  tips: TIPS,
+  // Expose all editable strings so a future content-safety test can scan
+  // every string in one shot regardless of MODE.
+  crumbs: [
+    ...RANDOM_CRUMBS,
+    ...OPPONENT_RANDOM_CRUMBS.sheriff,
+    ...OPPONENT_RANDOM_CRUMBS.unbaked,
+    FEATURED.featuredCrumb,
+  ].filter((s): s is string => typeof s === 'string' && s.length > 0),
+  tips: [
+    ...RANDOM_TIPS,
+    ...(FEATURED.featuredTip ? [FEATURED.featuredTip] : []),
+  ],
 };
 
 /**
@@ -227,19 +293,63 @@ function pickIndex(seed: string, length: number): number {
 }
 
 /**
- * Returns one crumb for the given session id. If the crumb list is empty,
- * returns an empty string (the panel will hide the section).
+ * Returns the crumb to show for the given session.
+ *
+ * MODE = "featured" → always returns FEATURED.featuredCrumb.
+ * MODE = "random"   → picks from OPPONENT_RANDOM_CRUMBS[opponent] if that
+ *                     array is non-empty, otherwise from RANDOM_CRUMBS.
+ *
+ * If the relevant pool is empty, returns '' and the panel hides the section.
+ *
+ * `opponent` is optional for back-compat with callers that don't pass it;
+ * when omitted, the per-opponent overrides are ignored and the general
+ * pool is used.
  */
-export function pickCrumbForSession(sessionId: string): string {
-  if (CRUMBS.length === 0) return '';
-  return CRUMBS[pickIndex(`${sessionId}::crumb`, CRUMBS.length)]!;
+export function pickCrumbForSession(
+  sessionId: string,
+  opponent?: OpponentId,
+): string {
+  if (MODE === 'featured') {
+    return FEATURED.featuredCrumb;
+  }
+  const opponentPool = opponent ? OPPONENT_RANDOM_CRUMBS[opponent] : undefined;
+  const pool: readonly string[] =
+    opponentPool && opponentPool.length > 0 ? opponentPool : RANDOM_CRUMBS;
+  if (pool.length === 0) return '';
+  return pool[pickIndex(`${sessionId}::crumb`, pool.length)]!;
 }
 
 /**
- * Returns one tip for the given session id. If the tips list is empty,
- * returns an empty string (the panel will hide the section).
+ * Returns the tip to show for the given session.
+ *
+ * MODE = "featured" → returns FEATURED.featuredTip (or '' if null).
+ * MODE = "random"   → picks from RANDOM_TIPS deterministically.
+ *
+ * Returns '' when the pool is empty / featured tip is null; the panel hides
+ * the footer in that case.
  */
 export function pickTipForSession(sessionId: string): string {
-  if (TIPS.length === 0) return '';
-  return TIPS[pickIndex(`${sessionId}::tip`, TIPS.length)]!;
+  if (MODE === 'featured') {
+    return FEATURED.featuredTip ?? '';
+  }
+  if (RANDOM_TIPS.length === 0) return '';
+  return RANDOM_TIPS[pickIndex(`${sessionId}::tip`, RANDOM_TIPS.length)]!;
 }
+
+/**
+ * Exposed for the build-time safety scanner. Returns every string a player
+ * could see, regardless of MODE.
+ */
+export function allDisplayableStrings(): readonly string[] {
+  return [
+    ...RANDOM_CRUMBS,
+    ...OPPONENT_RANDOM_CRUMBS.sheriff,
+    ...OPPONENT_RANDOM_CRUMBS.unbaked,
+    ...RANDOM_TIPS,
+    FEATURED.featuredCrumb,
+    ...(FEATURED.featuredTip ? [FEATURED.featuredTip] : []),
+  ];
+}
+
+/** Exposed so the CrumbTrail can show the current mode in a screenshot. */
+export const CRUMB_TRAIL_MODE: 'random' | 'featured' = MODE;

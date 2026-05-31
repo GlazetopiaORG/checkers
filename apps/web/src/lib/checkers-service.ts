@@ -312,18 +312,6 @@ export async function getLegalMoves(
 ): Promise<Move[]> {
   const row = await loadSessionRow(sessionId, expectedUserId, presentedToken);
 
-  // Phase 5.0.12: log every call so we can see in Vercel logs WHY a request
-  // returned []. The most common cause has been row.status !== 'active'.
-  // eslint-disable-next-line no-console
-  console.log('[api/legal-moves] request', {
-    sessionId,
-    rowStatus: row.status,
-    rowTurn: row.turn,
-    rowOpponentType: row.opponent_type,
-    rowMoveCount: row.move_count,
-    from,
-  });
-
   if (row.status !== 'active') {
     // eslint-disable-next-line no-console
     console.warn(
@@ -339,10 +327,7 @@ export async function getLegalMoves(
     return [];
   }
   const state = rowToState(row);
-  const moves = engineLegalMoves(state, defaultConfig, from);
-  // eslint-disable-next-line no-console
-  console.log(`[api/legal-moves] engine returned ${moves.length} moves`);
-  return moves;
+  return engineLegalMoves(state, defaultConfig, from);
 }
 
 // -----------------------------------------------------------------------------

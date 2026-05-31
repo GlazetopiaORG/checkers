@@ -29,7 +29,7 @@ import type { CooldownTracker } from '../lib/cooldown.js';
 
 export const checkersCommandData = new SlashCommandBuilder()
   .setName('checkers')
-  .setDescription("Duel the Unbaked. Three wins clears the level.");
+  .setDescription("Duel opponents and earn marks toward clearing the level.");
 
 export function makeCheckersHandler(cooldown: CooldownTracker) {
   return async function handleCheckers(
