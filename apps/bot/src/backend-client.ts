@@ -28,6 +28,26 @@ export interface StartSessionResponse {
   gameUrl: string;
 }
 
+/**
+ * Phase 5.0.14: start-or-resume response. The bot calls this instead of
+ * /session/start so an in-progress game is resumed rather than duplicated.
+ */
+export interface StartOrResumeSessionResponse {
+  kind: 'new' | 'resumed';
+  sessionId: string;
+  token: string;
+  expiresAt: string;
+  gameUrl: string;
+  /** Present and non-null when kind === 'resumed'. */
+  resumed:
+    | {
+        status: 'pending' | 'active';
+        opponentType: string;
+        moveCount: number;
+      }
+    | null;
+}
+
 export interface UserMarksResponse {
   discordId: string;
   /**
@@ -174,6 +194,25 @@ export async function startSession(input: {
   return call<StartSessionResponse>({
     method: 'POST',
     path: '/api/checkers/session/start',
+    body: {
+      discordId: input.discordId,
+      ...(input.discordUsername ? { discordUsername: input.discordUsername } : {}),
+    },
+  });
+}
+
+/**
+ * Phase 5.0.14: prefer this over startSession from the /checkers command.
+ * The backend checks for an unfinished session first and resumes it with
+ * a fresh JWT; only when none exists is a new session created.
+ */
+export async function startOrResumeSession(input: {
+  discordId: string;
+  discordUsername?: string | undefined;
+}): Promise<StartOrResumeSessionResponse> {
+  return call<StartOrResumeSessionResponse>({
+    method: 'POST',
+    path: '/api/checkers/session/start-or-resume',
     body: {
       discordId: input.discordId,
       ...(input.discordUsername ? { discordUsername: input.discordUsername } : {}),

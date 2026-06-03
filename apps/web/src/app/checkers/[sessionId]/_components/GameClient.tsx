@@ -418,7 +418,15 @@ export function GameClient({
 
   const handleApiFailure = useCallback((e: unknown) => {
     if (e instanceof CheckersApiError) {
-      if (e.code === 'SESSION_EXPIRED') {
+      // Phase 5.0.14: token-expiry surfaces friendly copy via the
+      // 'expired' phase. Backend currently returns UNAUTHORIZED for
+      // both missing-token and expired-token; the message text
+      // disambiguates. SESSION_EXPIRED is also handled if/when the
+      // backend uses that code explicitly.
+      if (
+        e.code === 'SESSION_EXPIRED' ||
+        (e.code === 'UNAUTHORIZED' && /expired/i.test(e.message))
+      ) {
         setPhase('expired');
         return;
       }
@@ -695,6 +703,23 @@ export function GameClient({
         <div className="state-message loading">
           <div className="spinner" aria-hidden="true" />
           <span>Loading the duel…</span>
+        </div>
+      </main>
+    );
+  }
+
+  if (phase === 'expired') {
+    return (
+      <main className="game-shell">
+        <header className="game-header">
+          <h1 className="game-title">Glazetopia Checkers</h1>
+        </header>
+        <div className="state-message error" role="alert">
+          <p>This game link expired.</p>
+          <p style={{ color: 'var(--ui-text-dim)', fontSize: '0.85em' }}>
+            Return to Discord and run <code>/checkers</code> to get a fresh
+            resume link.
+          </p>
         </div>
       </main>
     );

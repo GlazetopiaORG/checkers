@@ -43,7 +43,7 @@ export function sessionStartedEmbed(opts: {
     .setTitle('🍩 The Unbaked stirs at the edge of town…')
     .setDescription(
       'A duel awaits. Tap the button below to open the board.\n' +
-        '*This link is private to you and expires in a few minutes.*',
+        '*This link is private to you and expires in 24 hours.*',
     )
     .addFields(
       {
@@ -71,6 +71,73 @@ export function sessionStartedEmbed(opts: {
       },
     )
     .setFooter({ text: 'Each path is independent — wins do not combine.' });
+}
+
+/**
+ * Phase 5.0.14: shown when /checkers is invoked while an unfinished session
+ * already exists. Surfaces the resume link with a fresh 24h token, and
+ * gives the player a forfeit-and-start-fresh option.
+ */
+export function sessionResumedEmbed(opts: {
+  paths: {
+    sheriff: { marks: number; required: number; passed: boolean };
+    unbaked: { marks: number; required: number; passed: boolean };
+  };
+  expiresAt: string;
+  resumed: {
+    status: 'pending' | 'active';
+    opponentType: string;
+    moveCount: number;
+  };
+}): EmbedBuilder {
+  const opponentLabel =
+    opts.resumed.opponentType === 'sheriff'
+      ? "Sheriff's Trial"
+      : opts.resumed.opponentType === 'unbaked'
+        ? 'Unbaked Duel'
+        : 'Duel in progress';
+  const stage =
+    opts.resumed.status === 'pending'
+      ? 'Opponent not yet chosen.'
+      : `${opts.resumed.moveCount} move${opts.resumed.moveCount === 1 ? '' : 's'} played.`;
+  return new EmbedBuilder()
+    .setColor(COLOR_ACCENT)
+    .setTitle('🍩 You already have a checkers duel in progress.')
+    .setDescription(
+      `**Path:** ${opponentLabel}\n` +
+        `**Stage:** ${stage}\n\n` +
+        'Tap **Resume Game** to pick up where you left off — your old link ' +
+        'has been replaced by a fresh 24-hour one.\n\n' +
+        '*Want a clean slate? Tap **Forfeit & Start New** to abandon this ' +
+        'game and begin a new one. The forfeited game does NOT count as a ' +
+        'loss, but no marks are awarded either.*',
+    )
+    .addFields(
+      {
+        name: "Sheriff's Trial",
+        value: pathLine(
+          opts.paths.sheriff.marks,
+          opts.paths.sheriff.required,
+          opts.paths.sheriff.passed,
+        ),
+        inline: true,
+      },
+      {
+        name: 'Unbaked Duel',
+        value: pathLine(
+          opts.paths.unbaked.marks,
+          opts.paths.unbaked.required,
+          opts.paths.unbaked.passed,
+        ),
+        inline: true,
+      },
+      {
+        name: 'Link expires',
+        value: `<t:${unixSeconds(opts.expiresAt)}:R>`,
+        inline: false,
+      },
+    )
+    .setFooter({ text: 'Only one duel can be in progress at a time.' });
 }
 
 /**

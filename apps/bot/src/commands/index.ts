@@ -4,9 +4,11 @@
  * Exports:
  *   - commandPayloads:  JSON definitions for Discord registration
  *   - dispatch():       routes incoming interactions to the right handler
+ *   - dispatchButton(): routes button interactions (Phase 5.0.14)
  */
 
 import type {
+  ButtonInteraction,
   ChatInputCommandInteraction,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
@@ -15,7 +17,9 @@ import { CooldownTracker } from '../lib/cooldown.js';
 import { getEnv } from '../env.js';
 import {
   checkersCommandData,
+  handleForfeitAndStartNew,
   makeCheckersHandler,
+  CHECKERS_BUTTON_PREFIX,
 } from './checkers.js';
 import {
   checkersStatusCommandData,
@@ -36,14 +40,14 @@ export function commandPayloads(): RESTPostAPIChatInputApplicationCommandsJSONBo
 /**
  * Build a dispatcher closed over the shared cooldown tracker.
  * The bot's index.ts calls this once at startup and routes every
- * incoming ChatInputCommandInteraction through the returned function.
+ * incoming interaction through the returned dispatch/dispatchButton.
  */
 export function makeDispatcher() {
   const env = getEnv();
   const cooldown = new CooldownTracker(env.BOT_COMMAND_COOLDOWN_SECONDS);
   const handleCheckers = makeCheckersHandler(cooldown);
 
-  return async function dispatch(
+  async function dispatch(
     interaction: ChatInputCommandInteraction,
   ): Promise<void> {
     switch (interaction.commandName) {
@@ -60,5 +64,23 @@ export function makeDispatcher() {
           ephemeral: true,
         });
     }
-  };
+  }
+
+  async function dispatchButton(interaction: ButtonInteraction): Promise<void> {
+    // All checkers buttons share a common customId prefix so we don't
+    // collide with link buttons (which carry no customId).
+    if (interaction.customId.startsWith(`${CHECKERS_BUTTON_PREFIX}:forfeit_start_new`)) {
+      await handleForfeitAndStartNew(interaction, cooldown);
+      return;
+    }
+    // Unknown button — silently acknowledge to avoid a public failure.
+    if (interaction.isRepliable()) {
+      await interaction.reply({
+        content: 'This button is no longer active.',
+        ephemeral: true,
+      });
+    }
+  }
+
+  return { dispatch, dispatchButton };
 }

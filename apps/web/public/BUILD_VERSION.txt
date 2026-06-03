@@ -1,19 +1,33 @@
 glazetopia-checkers
-phase: 5.0.13
+phase: 5.0.14
 
-Phase 5.0.13 — Crumb Trail content management + final cleanup
-  - apps/web/src/app/checkers/[sessionId]/_content/crumb-trail.ts
-    now supports MODE = "random" | "featured":
-      "random"   → rotating crumbs + tips (stable per session)
-      "featured" → pinned crumb + optional pinned tip for announcements
-  - Optional opponent-specific crumb arrays (Sheriff / Unbaked)
-  - Visible debug panel removed
-  - Verbose debug console logs stripped; warn/error retained
-  - Discord /checkers description updated:
-    "Duel opponents and earn marks toward clearing the level."
+Phase 5.0.14 — Session token lifetime + resume-vs-new on /checkers
+  - CHECKERS_SESSION_TTL_MINUTES default raised: 15 → 1440 (24 hours)
+  - JWT exp and the DB row's expires_at both use the same TTL
+  - NEW: POST /api/checkers/session/start-or-resume
+    - HMAC-protected, bot-only (same auth scheme as /session/start)
+    - Returns { kind: 'new' | 'resumed', sessionId, token, expiresAt,
+                gameUrl, resumed }
+    - Resume path:
+        * Re-mints JWT for the existing sessionId (old browser link
+          is invalidated — token_hash is replaced)
+        * Bumps the row's expires_at by another 24h
+        * Returns the same sessionId so no duplicate marks possible
+  - /checkers bot command:
+    - Now calls start-or-resume instead of start
+    - If kind === 'resumed': renders new resumed-session embed +
+      Resume Game link button + Forfeit & Start New danger button
+    - Forfeit & Start New: cancels unfinished session via
+      /session/cancel, then creates a fresh one and replaces the embed
+  - Expired-token UX:
+    - GameClient maps UNAUTHORIZED + "expired" message → 'expired' phase
+    - Dedicated expired-phase render:
+      "This game link expired. Return to Discord and run /checkers
+       to get a fresh resume link."
 
-Gameplay preserved from 5.0.12:
-  - Legal move generation fixed (commitSession verifies UPDATE)
-  - Sheriff requires 4 marks; Unbaked requires 2 marks
-  - Forced captures still applied
-  - Bot .js ESM extensions preserved for Railway runtime
+Preserved from prior phases:
+  - Legal-move generation working (5.0.12 commitSession verification)
+  - Crumb Trail content config with MODE = 'random' | 'featured'
+  - Sheriff requires 4 marks, Unbaked requires 2 marks
+  - Bot .js ESM imports for Railway runtime
+  - Discord /checkers description text

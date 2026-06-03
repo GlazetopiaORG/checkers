@@ -30,7 +30,7 @@ const EnvSchema = z.object({
 
   // Anti-cheat tunables
   CHECKERS_MIN_MOVES_FOR_WIN: z.coerce.number().int().nonnegative().default(10),
-  CHECKERS_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(15),
+  CHECKERS_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(1440),
   CHECKERS_COOLDOWN_SECONDS: z.coerce.number().int().nonnegative().default(30),
   CHECKERS_MAX_DAILY_SESSIONS: z.coerce.number().int().positive().default(20),
 

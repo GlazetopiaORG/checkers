@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     intents: [GatewayIntentBits.Guilds],
   });
 
-  const dispatch = makeDispatcher();
+  const { dispatch, dispatchButton } = makeDispatcher();
 
   client.once(Events.ClientReady, async (c) => {
     // eslint-disable-next-line no-console
@@ -53,24 +53,33 @@ async function main(): Promise<void> {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
     try {
-      await dispatch(interaction);
+      if (interaction.isChatInputCommand()) {
+        await dispatch(interaction);
+        return;
+      }
+      // Phase 5.0.14: button interactions (Forfeit & Start New).
+      if (interaction.isButton()) {
+        await dispatchButton(interaction);
+        return;
+      }
     } catch (err) {
       // Last-resort error handler — individual commands should catch their own
       // errors, but if something escapes, log it and tell the user.
       // eslint-disable-next-line no-console
-      console.error('[bot] uncaught command error:', err);
+      console.error('[bot] uncaught interaction error:', err);
       try {
-        if (interaction.deferred) {
-          await interaction.editReply({
-            content: 'Something went wrong handling this command. Please try again.',
-          });
-        } else if (!interaction.replied) {
-          await interaction.reply({
-            content: 'Something went wrong handling this command. Please try again.',
-            ephemeral: true,
-          });
+        if (interaction.isRepliable()) {
+          if (interaction.deferred) {
+            await interaction.editReply({
+              content: 'Something went wrong. Please try again.',
+            });
+          } else if (!interaction.replied) {
+            await interaction.reply({
+              content: 'Something went wrong. Please try again.',
+              ephemeral: true,
+            });
+          }
         }
       } catch {
         // Swallow — we already logged the real error.

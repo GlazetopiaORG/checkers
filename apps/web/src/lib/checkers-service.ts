@@ -192,6 +192,153 @@ export async function startSession(
 }
 
 // -----------------------------------------------------------------------------
+// startOrResumeSession — bot-facing entry point
+//
+// Phase 5.0.14: avoids creating duplicate active sessions. If the user has
+// an unfinished session (status pending or active, not yet expired), we
+// re-mint a fresh JWT for that session and bump expires_at, returning a
+// "resumed" payload. Otherwise we fall through to startSession() to create
+// a fresh game.
+//
+// The resume path:
+//   - Returns the SAME sessionId as before (no new row created)
+//   - Mints a NEW JWT with the same sid + uid (so the old browser URL
+//     stops working — anti-abuse, anti-link-sharing)
+//   - Updates token_hash AND expires_at on the existing row
+//   - Marks remain server-authoritative; no duplicate awards possible
+// -----------------------------------------------------------------------------
+
+export type StartOrResumeKind = 'new' | 'resumed';
+
+export interface StartOrResumeResult {
+  kind: StartOrResumeKind;
+  sessionId: string;
+  token: string;
+  expiresAt: string;
+  gameUrl: string;
+  /** Phase 5.0.14: included for resumed sessions so the bot can render
+   * accurate progress in the embed. Omitted (set to null) on new sessions. */
+  resumed?: {
+    status: 'pending' | 'active';
+    opponentType: OpponentType;
+    moveCount: number;
+  } | null;
+}
+
+export async function startOrResumeSession(
+  input: StartSessionInput,
+): Promise<StartOrResumeResult> {
+  const env = getEnv();
+  const supabase = getSupabase();
+
+  // Best-effort cleanup of stale sessions before checking for unfinished games.
+  // This expires sessions where expires_at is in the past — so a stale
+  // pending/active row from a previous day won't be picked up as "unfinished".
+  await supabase.rpc('expire_stale_sessions');
+
+  // Look up the user (do NOT upsert yet — if they don't exist they can't
+  // have an unfinished session, so we'll fall through to startSession).
+  const { data: existingUser, error: userErr } = await supabase
+    .from('users')
+    .select('id')
+    .eq('discord_id', input.discordId)
+    .maybeSingle();
+  if (userErr) {
+    throw new ApiError(
+      'INTERNAL_ERROR',
+      `User lookup failed: ${userErr.message}`,
+    );
+  }
+
+  if (existingUser) {
+    const userId = (existingUser as { id: string }).id;
+    // Find the most recent unfinished session for this user.
+    // `expire_stale_sessions` above already moved expired rows out of
+    // pending/active, but we double-filter on expires_at as a safety net.
+    const nowIso = new Date().toISOString();
+    const { data: unfinished, error: findErr } = await supabase
+      .from('checkers_sessions')
+      .select('id, status, opponent_type, move_count')
+      .eq('user_id', userId)
+      .in('status', ['pending', 'active'])
+      .gt('expires_at', nowIso)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (findErr) {
+      throw new ApiError(
+        'INTERNAL_ERROR',
+        `Failed to look up unfinished session: ${findErr.message}`,
+      );
+    }
+    if (unfinished) {
+      const row = unfinished as {
+        id: string;
+        status: 'pending' | 'active';
+        opponent_type: string | null;
+        move_count: number;
+      };
+      // Re-mint token & refresh expiry. The OLD token (in the user's old
+      // URL) is invalidated because we replace token_hash on the row.
+      const newExpiresAt = new Date(
+        Date.now() + env.CHECKERS_SESSION_TTL_MINUTES * 60_000,
+      );
+      const { token, hash } = await signSessionToken(
+        row.id,
+        userId,
+        env.CHECKERS_SESSION_TTL_MINUTES,
+      );
+
+      const { error: updErr } = await supabase
+        .from('checkers_sessions')
+        .update({
+          token_hash: hash,
+          expires_at: newExpiresAt.toISOString(),
+        })
+        .eq('id', row.id);
+      if (updErr) {
+        throw new ApiError(
+          'INTERNAL_ERROR',
+          `Failed to refresh session token: ${updErr.message}`,
+        );
+      }
+
+      // Also keep username in sync (the user may have changed it on Discord).
+      if (input.discordUsername) {
+        await supabase
+          .from('users')
+          .update({ discord_username: input.discordUsername })
+          .eq('id', userId);
+      }
+
+      return {
+        kind: 'resumed',
+        sessionId: row.id,
+        token,
+        expiresAt: newExpiresAt.toISOString(),
+        gameUrl: `${env.CHECKERS_GAME_URL}/checkers/${row.id}?t=${encodeURIComponent(token)}`,
+        resumed: {
+          status: row.status,
+          opponentType: coerceOpponentType(row.opponent_type),
+          moveCount: row.move_count,
+        },
+      };
+    }
+  }
+
+  // No unfinished session — create a new one normally.
+  const created = await startSession(input);
+  return {
+    kind: 'new',
+    sessionId: created.sessionId,
+    token: created.token,
+    expiresAt: created.expiresAt,
+    gameUrl: created.gameUrl,
+    resumed: null,
+  };
+}
+
+// -----------------------------------------------------------------------------
 // getSession — load the player's current view of a session
 // -----------------------------------------------------------------------------
 
