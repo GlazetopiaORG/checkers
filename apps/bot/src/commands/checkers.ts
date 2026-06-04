@@ -42,8 +42,8 @@ export const checkersCommandData = new SlashCommandBuilder()
 export const CHECKERS_BUTTON_PREFIX = 'checkers';
 
 const ZERO_PATHS = {
-  sheriff: { marks: 0, required: 4, passed: false },
-  unbaked: { marks: 0, required: 2, passed: false },
+  sheriff: { marks: 0, required: 3, passed: false },
+  unbaked: { marks: 0, required: 1, passed: false },
 };
 
 async function fetchPaths(discordId: string): Promise<typeof ZERO_PATHS> {

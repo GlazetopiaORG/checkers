@@ -234,7 +234,14 @@ export async function startOrResumeSession(
   // Best-effort cleanup of stale sessions before checking for unfinished games.
   // This expires sessions where expires_at is in the past — so a stale
   // pending/active row from a previous day won't be picked up as "unfinished".
-  await supabase.rpc('expire_stale_sessions');
+  const { error: rpcErr } = await supabase.rpc('expire_stale_sessions');
+  if (rpcErr) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[start-or-resume] expire_stale_sessions RPC failed (continuing):',
+      logSupabaseError(rpcErr),
+    );
+  }
 
   // Look up the user (do NOT upsert yet — if they don't exist they can't
   // have an unfinished session, so we'll fall through to startSession).
@@ -244,6 +251,11 @@ export async function startOrResumeSession(
     .eq('discord_id', input.discordId)
     .maybeSingle();
   if (userErr) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[start-or-resume] user lookup failed:',
+      logSupabaseError(userErr),
+    );
     throw new ApiError(
       'INTERNAL_ERROR',
       `User lookup failed: ${userErr.message}`,
@@ -255,6 +267,12 @@ export async function startOrResumeSession(
     // Find the most recent unfinished session for this user.
     // `expire_stale_sessions` above already moved expired rows out of
     // pending/active, but we double-filter on expires_at as a safety net.
+    //
+    // Phase 5.0.15: order by `started_at`, not `created_at`. The
+    // checkers_sessions table has NO `created_at` column — using it
+    // produced a 400 from PostgREST and surfaced as a generic 500 to
+    // the caller. The schema's lifecycle timestamp is `started_at`
+    // (set to now() at insert).
     const nowIso = new Date().toISOString();
     const { data: unfinished, error: findErr } = await supabase
       .from('checkers_sessions')
@@ -262,10 +280,22 @@ export async function startOrResumeSession(
       .eq('user_id', userId)
       .in('status', ['pending', 'active'])
       .gt('expires_at', nowIso)
-      .order('created_at', { ascending: false })
+      .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     if (findErr) {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[start-or-resume] find unfinished session failed:',
+        logSupabaseError(findErr),
+        {
+          userId,
+          query:
+            'select id,status,opponent_type,move_count from checkers_sessions ' +
+            "where user_id=$1 and status in ('pending','active') " +
+            'and expires_at > $2 order by started_at desc limit 1',
+        },
+      );
       throw new ApiError(
         'INTERNAL_ERROR',
         `Failed to look up unfinished session: ${findErr.message}`,
@@ -297,6 +327,12 @@ export async function startOrResumeSession(
         })
         .eq('id', row.id);
       if (updErr) {
+        // eslint-disable-next-line no-console
+        console.error(
+          '[start-or-resume] refresh token_hash/expires_at failed:',
+          logSupabaseError(updErr),
+          { sessionId: row.id },
+        );
         throw new ApiError(
           'INTERNAL_ERROR',
           `Failed to refresh session token: ${updErr.message}`,
@@ -336,6 +372,33 @@ export async function startOrResumeSession(
     gameUrl: created.gameUrl,
     resumed: null,
   };
+}
+
+/**
+ * Phase 5.0.15: structured logging shape for Supabase / PostgREST errors.
+ *
+ * Returns a plain object safe to pass to console.* — captures the standard
+ * PostgrestError fields (code, message, details, hint) so Vercel function
+ * logs surface the actual root cause instead of a generic message.
+ *
+ * Never includes JWTs, secrets, raw request bodies, or PII.
+ */
+function logSupabaseError(err: unknown): {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+} {
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    if (typeof e.code === 'string') out.code = e.code;
+    if (typeof e.message === 'string') out.message = e.message;
+    if (typeof e.details === 'string') out.details = e.details;
+    if (typeof e.hint === 'string') out.hint = e.hint;
+    return out;
+  }
+  return { message: String(err) };
 }
 
 // -----------------------------------------------------------------------------

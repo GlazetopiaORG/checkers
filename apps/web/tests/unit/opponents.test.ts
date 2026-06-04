@@ -39,9 +39,9 @@ describe('OPPONENTS registry', () => {
     );
   });
 
-  it('sheriff path = 4 wins, unbaked path = 2 wins', () => {
-    expect(OPPONENTS.sheriff.marksRequired).toBe(4);
-    expect(OPPONENTS.unbaked.marksRequired).toBe(2);
+  it('sheriff path = 3 wins, unbaked path = 1 win', () => {
+    expect(OPPONENTS.sheriff.marksRequired).toBe(3);
+    expect(OPPONENTS.unbaked.marksRequired).toBe(1);
   });
 
   it('every preset has a non-empty displayName', () => {

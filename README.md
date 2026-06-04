@@ -24,6 +24,9 @@ A Discord-launched checkers mini-game where players battle the Unbaked. Three wi
 - ✅ **Phase 5.0.1** — Test bootstrap hardening: import-time env injection, role-service mock-overwrite bug fix, BOT_HTTP_PORT=0 (OS-assigned) allowed
 - ✅ **Phase 5.0.2** — Per-test-file env pre-import guard for auth.test.ts and bot-client.test.ts
 - ✅ **Phase 5.0.3** — Three-layer env bootstrap: vitest test.env (truly pre-import) + setupFiles + per-test guards, all reading from shared frozen defaults
+- ✅ **Phase 5.0.13** — Crumb Trail content management (MODE = random / featured) + final cleanup
+- ✅ **Phase 5.0.14** — 24h session token lifetime + /checkers resumes unfinished games (Resume Game / Forfeit & Start New); expired-token UX
+- ✅ **Phase 5.0.15** — Fix start-or-resume 500 (PostgREST 400 from ordering by nonexistent `created_at` → fix to `started_at`); structured Supabase error logging; progression tuning (Sheriff 4→3, Unbaked 2→1)
 - ⏳ **Phase 6** — Anti-cheat monitoring & alerts
 
 ## Repo layout

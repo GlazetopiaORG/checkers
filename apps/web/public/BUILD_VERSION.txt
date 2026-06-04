@@ -1,33 +1,36 @@
 glazetopia-checkers
-phase: 5.0.14
+phase: 5.0.15
 
-Phase 5.0.14 — Session token lifetime + resume-vs-new on /checkers
-  - CHECKERS_SESSION_TTL_MINUTES default raised: 15 → 1440 (24 hours)
-  - JWT exp and the DB row's expires_at both use the same TTL
-  - NEW: POST /api/checkers/session/start-or-resume
-    - HMAC-protected, bot-only (same auth scheme as /session/start)
-    - Returns { kind: 'new' | 'resumed', sessionId, token, expiresAt,
-                gameUrl, resumed }
-    - Resume path:
-        * Re-mints JWT for the existing sessionId (old browser link
-          is invalidated — token_hash is replaced)
-        * Bumps the row's expires_at by another 24h
-        * Returns the same sessionId so no duplicate marks possible
-  - /checkers bot command:
-    - Now calls start-or-resume instead of start
-    - If kind === 'resumed': renders new resumed-session embed +
-      Resume Game link button + Forfeit & Start New danger button
-    - Forfeit & Start New: cancels unfinished session via
-      /session/cancel, then creates a fresh one and replaces the embed
-  - Expired-token UX:
-    - GameClient maps UNAUTHORIZED + "expired" message → 'expired' phase
-    - Dedicated expired-phase render:
-      "This game link expired. Return to Discord and run /checkers
-       to get a fresh resume link."
+Phase 5.0.15 — Fix start-or-resume 500 + progression tuning
 
-Preserved from prior phases:
-  - Legal-move generation working (5.0.12 commitSession verification)
-  - Crumb Trail content config with MODE = 'random' | 'featured'
-  - Sheriff requires 4 marks, Unbaked requires 2 marks
+PRIMARY FIX:
+  - apps/web/src/lib/checkers-service.ts (startOrResumeSession)
+    The "find latest unfinished session" query ordered by `created_at`,
+    but checkers_sessions has NO created_at column — only `started_at`.
+    PostgREST returned 400, the route surfaced as 500.
+    Fix: order('started_at', { ascending: false })
+  - Added structured Supabase error logging (code/message/details/hint)
+    around every Supabase call in startOrResumeSession so Vercel logs
+    surface root cause on any future failure. Never logs secrets.
+
+PROGRESSION TUNING:
+  - Sheriff: aiDepth 2, marksRequired 4 → 3
+  - Unbaked: aiDepth 4, marksRequired 2 → 1
+  AI depths unchanged. Updated in:
+    - apps/web/src/lib/opponents.ts            (server source of truth)
+    - apps/web/src/app/checkers/[sessionId]/_lib/opponents.ts  (client mirror)
+    - apps/bot/src/commands/checkers.ts        (ZERO_PATHS fallback)
+    - apps/web/tests/unit/opponents.test.ts
+    - apps/web/tests/unit/marks-display-opponent.test.ts
+    - apps/bot/tests/unit/embeds.test.ts
+
+PRESERVED FROM PRIOR PHASES:
+  - 24h session token lifetime (CHECKERS_SESSION_TTL_MINUTES=1440)
+  - Legal-move generation working (5.0.12)
+  - Board interactivity (5.0.11)
+  - Crumb Trail content config with MODE = 'random' | 'featured' (5.0.13)
   - Bot .js ESM imports for Railway runtime
   - Discord /checkers description text
+
+MIGRATION REQUIRED: NO. The fix uses an existing column (started_at).
+  No schema change. No data migration. Just deploy and verify.

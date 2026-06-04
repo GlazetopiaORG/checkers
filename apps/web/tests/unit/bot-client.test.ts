@@ -55,8 +55,8 @@ describe('requestRoleGrant', () => {
     const result = await requestRoleGrant({
       discordId: '123456789012345678',
       opponentType: 'sheriff',
-      marksTotal: 4,
-      marksRequired: 4,
+      marksTotal: 3,
+      marksRequired: 3,
     });
 
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -76,8 +76,8 @@ describe('requestRoleGrant', () => {
     expect(JSON.parse(body)).toEqual({
       discordId: '123456789012345678',
       opponentType: 'sheriff',
-      marksTotal: 4,
-      marksRequired: 4,
+      marksTotal: 3,
+      marksRequired: 3,
     });
 
     expect(result.outcome).toBe('granted');
@@ -93,8 +93,8 @@ describe('requestRoleGrant', () => {
     await requestRoleGrant({
       discordId: '111111111111111111',
       opponentType: 'unbaked',
-      marksTotal: 2,
-      marksRequired: 2,
+      marksTotal: 1,
+      marksRequired: 1,
     });
     expect(fetchMock.mock.calls[0]![0] as string).toBe(`${BOT_URL}/internal/grant-role`);
   });
@@ -110,8 +110,8 @@ describe('requestRoleGrant', () => {
     const result = await requestRoleGrant({
       discordId: '222222222222222222',
       opponentType: 'unbaked',
-      marksTotal: 2,
-      marksRequired: 2,
+      marksTotal: 1,
+      marksRequired: 1,
     });
 
     expect(result.outcome).toBe('noop');
@@ -128,8 +128,8 @@ describe('requestRoleGrant', () => {
     const result = await requestRoleGrant({
       discordId: '333333333333333333',
       opponentType: 'sheriff',
-      marksTotal: 4,
-      marksRequired: 4,
+      marksTotal: 3,
+      marksRequired: 3,
     });
 
     expect(result.outcome).toBe('failed');
@@ -142,8 +142,8 @@ describe('requestRoleGrant', () => {
     const result = await requestRoleGrant({
       discordId: '444444444444444444',
       opponentType: 'unbaked',
-      marksTotal: 2,
-      marksRequired: 2,
+      marksTotal: 1,
+      marksRequired: 1,
     });
 
     expect(result.outcome).toBe('failed');
@@ -157,8 +157,8 @@ describe('requestRoleGrant', () => {
     const result = await requestRoleGrant({
       discordId: '555555555555555555',
       opponentType: 'sheriff',
-      marksTotal: 4,
-      marksRequired: 4,
+      marksTotal: 3,
+      marksRequired: 3,
     });
 
     expect(result.outcome).toBe('skipped');

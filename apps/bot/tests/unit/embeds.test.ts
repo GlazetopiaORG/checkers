@@ -4,7 +4,7 @@
  * The critical scenarios we MUST cover:
  *   - 2 Sheriff + 1 Unbaked → level NOT passed (combined sum is irrelevant)
  *   - Sheriff and Unbaked progress display separately
- *   - Each path shows its own threshold (5 for Sheriff, 3 for Unbaked)
+ *   - Each path shows its own threshold (3 for Sheriff, 1 for Unbaked)
  *   - The "Each path is independent — wins do not combine" line appears
  *   - Legacy combined "marks: N / required" view no longer exists
  */
@@ -31,8 +31,8 @@ function mkPaths(opts: {
 }) {
   const sheriffMarks = opts.sheriffMarks ?? 0;
   const unbakedMarks = opts.unbakedMarks ?? 0;
-  const sheriffRequired = opts.sheriffRequired ?? 4;
-  const unbakedRequired = opts.unbakedRequired ?? 2;
+  const sheriffRequired = opts.sheriffRequired ?? 3;
+  const unbakedRequired = opts.unbakedRequired ?? 1;
   return {
     sheriff: {
       marks: sheriffMarks,
@@ -60,9 +60,9 @@ describe('sessionStartedEmbed', () => {
     const json = embed.toJSON();
     expect(json.fields).toHaveLength(3);
     expect(json.fields![0]!.name).toBe("Sheriff's Trial");
-    expect(json.fields![0]!.value).toContain('1 / 4 wins');
+    expect(json.fields![0]!.value).toContain('1 / 3 wins');
     expect(json.fields![1]!.name).toBe('Unbaked Duel');
-    expect(json.fields![1]!.value).toContain('1 / 2 wins');
+    expect(json.fields![1]!.value).toContain('1 / 1 wins');
     expect(json.fields![2]!.name).toBe('Expires');
   });
 
@@ -94,43 +94,44 @@ describe('marksStatusEmbed: per-path display', () => {
 
     const sheriffField = json.fields!.find((f: { name: string; value: string; inline?: boolean }) => f.name === "Sheriff's Trial")!;
     const unbakedField = json.fields!.find((f: { name: string; value: string; inline?: boolean }) => f.name === 'Unbaked Duel')!;
-    expect(sheriffField.value).toContain('3 / 4 wins');
-    expect(unbakedField.value).toContain('1 / 2 wins');
+    expect(sheriffField.value).toContain('3 / 3 wins');
+    expect(unbakedField.value).toContain('1 / 1 wins');
   });
 
-  it('REGRESSION: 3 Sheriff + 1 Unbaked does NOT pass', () => {
-    // Spec for Phase 5.0.4: this MUST be 'No'. Sum is 4 but neither
-    // single-path threshold (Sheriff 4, Unbaked 2) is reached.
+  it('REGRESSION: 2 Sheriff + 0 Unbaked does NOT pass', () => {
+    // Spec for Phase 5.0.15: this MUST be 'No'. Sum is 2 but neither
+    // single-path threshold (Sheriff 3, Unbaked 1) is reached.
     const embed = marksStatusEmbed({
-      paths: mkPaths({ sheriffMarks: 3, unbakedMarks: 1 }),
+      paths: mkPaths({ sheriffMarks: 2, unbakedMarks: 0 }),
     });
     const json = embed.toJSON();
     const levelField = json.fields!.find((f: { name: string; value: string; inline?: boolean }) => f.name === 'Level Passed')!;
     expect(levelField.value).toBe('No');
   });
 
-  it('REGRESSION: 3 Sheriff + 1 Unbaked still does NOT pass (sum = 4)', () => {
-    // The sum 4 equals the Sheriff threshold but is NOT a passing condition.
+  it('REGRESSION: 2 Sheriff + 0 Unbaked still does NOT pass (sum = 2)', () => {
+    // The sum 2 is NOT a passing condition; neither single-path
+    // threshold (Sheriff 3, Unbaked 1) is met.
     const embed = marksStatusEmbed({
-      paths: mkPaths({ sheriffMarks: 3, unbakedMarks: 1 }),
+      paths: mkPaths({ sheriffMarks: 2, unbakedMarks: 0 }),
     });
     const json = embed.toJSON();
     const levelField = json.fields!.find((f: { name: string; value: string; inline?: boolean }) => f.name === 'Level Passed')!;
     expect(levelField.value).toBe('No');
   });
 
-  it('passes when Sheriff alone reaches 4', () => {
+  it('passes when Sheriff alone reaches 3', () => {
     const embed = marksStatusEmbed({
-      paths: mkPaths({ sheriffMarks: 4, unbakedMarks: 0 }),
+      paths: mkPaths({ sheriffMarks: 3, unbakedMarks: 0 }),
     });
     const json = embed.toJSON();
     const levelField = json.fields!.find((f: { name: string; value: string; inline?: boolean }) => f.name === 'Level Passed')!;
     expect(levelField.value).toContain("Sheriff's Trial");
   });
 
-  it('passes when Unbaked alone reaches 2', () => {
+  it('passes when Unbaked alone reaches 1', () => {
     const embed = marksStatusEmbed({
-      paths: mkPaths({ sheriffMarks: 0, unbakedMarks: 2 }),
+      paths: mkPaths({ sheriffMarks: 0, unbakedMarks: 1 }),
     });
     const json = embed.toJSON();
     const levelField = json.fields!.find((f: { name: string; value: string; inline?: boolean }) => f.name === 'Level Passed')!;
@@ -139,7 +140,7 @@ describe('marksStatusEmbed: per-path display', () => {
 
   it('shows "both paths" when both thresholds reached', () => {
     const embed = marksStatusEmbed({
-      paths: mkPaths({ sheriffMarks: 4, unbakedMarks: 2 }),
+      paths: mkPaths({ sheriffMarks: 3, unbakedMarks: 1 }),
     });
     const json = embed.toJSON();
     const levelField = json.fields!.find((f: { name: string; value: string; inline?: boolean }) => f.name === 'Level Passed')!;
@@ -164,11 +165,11 @@ describe('marksStatusEmbed: per-path display', () => {
 
   it('shows per-path "to go" copy when partial', () => {
     const embed = marksStatusEmbed({
-      paths: mkPaths({ sheriffMarks: 1, unbakedMarks: 1 }),
+      paths: mkPaths({ sheriffMarks: 1, unbakedMarks: 0 }),
     });
     const json = embed.toJSON();
-    // Sheriff: 4-1=3 to go. Unbaked: 2-1=1 to go.
-    expect(json.description).toContain('Sheriff: 3 to go');
+    // Sheriff: 3-1=2 to go. Unbaked: 1-0=1 to go.
+    expect(json.description).toContain('Sheriff: 2 to go');
     expect(json.description).toContain('Unbaked: 1 to go');
   });
 
@@ -183,15 +184,15 @@ describe('marksStatusEmbed: per-path display', () => {
 
   it('does NOT render a combined "Marks" field or cross-path sum', () => {
     const embed = marksStatusEmbed({
-      paths: mkPaths({ sheriffMarks: 3, unbakedMarks: 1 }),
+      paths: mkPaths({ sheriffMarks: 2, unbakedMarks: 0 }),
     });
     const json = embed.toJSON();
     // The legacy field name 'Marks' must not appear; only per-path names.
     const fieldNames = json.fields!.map((f: { name: string; value: string; inline?: boolean }) => f.name);
     expect(fieldNames).not.toContain('Marks');
-    // And the description must never display the cross-path sum (3+1=4)
-    // as if it were a combined total.
-    expect(json.description ?? '').not.toMatch(/\b4\s*\/\s*4\b/);
+    // And the description must never display the cross-path sum (2+0=2)
+    // as if it were a combined total against the new sheriff threshold (3).
+    expect(json.description ?? '').not.toMatch(/\b2\s*\/\s*3\b/);
   });
 });
 

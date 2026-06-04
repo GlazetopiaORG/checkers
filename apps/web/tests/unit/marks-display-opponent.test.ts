@@ -44,12 +44,12 @@ describe('client opponent display registry (HUD source-of-truth pre-server)', ()
     );
   });
 
-  it('sheriff path requires 4 wins', () => {
-    expect(OPPONENT_DISPLAY.sheriff.marksRequired).toBe(4);
+  it('sheriff path requires 3 wins', () => {
+    expect(OPPONENT_DISPLAY.sheriff.marksRequired).toBe(3);
   });
 
-  it('unbaked path requires 2 wins', () => {
-    expect(OPPONENT_DISPLAY.unbaked.marksRequired).toBe(2);
+  it('unbaked path requires 1 win', () => {
+    expect(OPPONENT_DISPLAY.unbaked.marksRequired).toBe(1);
   });
 
   it('every opponent has a pathName for the HUD label', () => {

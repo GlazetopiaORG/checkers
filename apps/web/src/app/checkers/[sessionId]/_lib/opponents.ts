@@ -54,10 +54,10 @@ export const OPPONENT_DISPLAY: Record<OpponentId, OpponentDisplay> = {
     pathName: "Sheriff's Trial",
     tagline:
       'Sheriff Buttercream tests every recruit. Hold your nerve, partner.',
-    intensityLabel: 'Easier — 4 wins to earn the badge',
+    intensityLabel: 'Easier — 3 wins to earn the badge',
     manArt: '/pieces/sheriff/man.png',
     kingArt: '/pieces/sheriff/king.png',
-    marksRequired: 4,
+    marksRequired: 3,
   },
   unbaked: {
     id: 'unbaked',
@@ -65,10 +65,10 @@ export const OPPONENT_DISPLAY: Record<OpponentId, OpponentDisplay> = {
     pathName: 'Unbaked Duel',
     tagline:
       "The Unbaked moves in patterns sane folk shouldn't see. Stay sharp.",
-    intensityLabel: 'Harder — 2 wins to earn the mark',
+    intensityLabel: 'Harder — 1 win to earn the mark',
     manArt: '/pieces/cpu-man.png',
     kingArt: '/pieces/cpu-king.png',
-    marksRequired: 2,
+    marksRequired: 1,
   },
 };
 

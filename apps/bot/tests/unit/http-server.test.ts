@@ -86,8 +86,8 @@ describe('POST /internal/grant-role: HMAC validation', () => {
     const body = JSON.stringify({
       discordId: '123456789012345678',
       opponentType: 'sheriff',
-      marksTotal: 4,
-      marksRequired: 4,
+      marksTotal: 3,
+      marksRequired: 3,
     });
     const res = await fetch(`${baseUrl}/internal/grant-role`, {
       method: 'POST',
@@ -103,8 +103,8 @@ describe('POST /internal/grant-role: HMAC validation', () => {
     const body = JSON.stringify({
       discordId: '123456789012345678',
       opponentType: 'sheriff',
-      marksTotal: 4,
-      marksRequired: 4,
+      marksTotal: 3,
+      marksRequired: 3,
     });
     const res = await fetch(`${baseUrl}/internal/grant-role`, {
       method: 'POST',
@@ -153,8 +153,8 @@ describe('POST /internal/grant-role: payload validation', () => {
     const body = JSON.stringify({
       discordId: 'not-a-snowflake',
       opponentType: 'sheriff',
-      marksTotal: 4,
-      marksRequired: 4,
+      marksTotal: 3,
+      marksRequired: 3,
     });
     const res = await fetch(`${baseUrl}/internal/grant-role`, {
       method: 'POST',
@@ -240,8 +240,8 @@ describe('POST /internal/grant-role: grant outcomes', () => {
     const body = JSON.stringify({
       discordId: '123456789012345678',
       opponentType: 'sheriff',
-      marksTotal: 4,
-      marksRequired: 4,
+      marksTotal: 3,
+      marksRequired: 3,
     });
     const res = await fetch(`${baseUrl}/internal/grant-role`, {
       method: 'POST',
@@ -262,8 +262,8 @@ describe('POST /internal/grant-role: grant outcomes', () => {
         roleId: ROLE_ID,
         discordId: '123456789012345678',
         opponentType: 'sheriff',
-        marksTotal: 4,
-        marksRequired: 4,
+        marksTotal: 3,
+        marksRequired: 3,
       }),
     );
   });
@@ -277,8 +277,8 @@ describe('POST /internal/grant-role: grant outcomes', () => {
     const body = JSON.stringify({
       discordId: '987654321098765432',
       opponentType: 'unbaked',
-      marksTotal: 2,
-      marksRequired: 2,
+      marksTotal: 1,
+      marksRequired: 1,
     });
     const res = await fetch(`${baseUrl}/internal/grant-role`, {
       method: 'POST',
@@ -304,8 +304,8 @@ describe('POST /internal/grant-role: grant outcomes', () => {
     const body = JSON.stringify({
       discordId: '555555555555555555',
       opponentType: 'sheriff',
-      marksTotal: 4,
-      marksRequired: 4,
+      marksTotal: 3,
+      marksRequired: 3,
     });
     const res = await fetch(`${baseUrl}/internal/grant-role`, {
       method: 'POST',
